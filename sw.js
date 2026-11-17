@@ -1,5 +1,5 @@
 // Prosty service worker: aplikacja otwiera się bez internetu (mapa i nazwy ulic wymagają sieci).
-const CACHE = 'moje-drogi-v10';
+const CACHE = 'moje-drogi-v11';
 const SHELL = [
   './', './index.html', './app.css', './app.js', './manifest.webmanifest', './icon.svg',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
@@ -11,6 +11,15 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
+// stuknięcie w powiadomienie o nowych ulicach otwiera aplikację
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) if ('focus' in c) return c.focus();
+    return self.clients.openWindow ? self.clients.openWindow(e.notification.data?.url || './') : undefined;
+  }));
+});
+
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   const isShell = url.origin === location.origin || url.hostname === 'unpkg.com';

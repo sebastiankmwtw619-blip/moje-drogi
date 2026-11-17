@@ -63,6 +63,15 @@
         <div><b id="st-towns">0</b><span>miejscowości</span></div>
         <div><b id="st-total">0 km</b><span>wszystkie trasy</span></div>
       </div>
+      <section id="ns-card" class="ns-card" hidden aria-labelledby="ns-title">
+        <div class="ns-head">
+          <h2 id="ns-title">Nowe ulice z tej trasy</h2>
+          <button id="ns-close" class="q-clear" type="button" aria-label="Zamknij podsumowanie trasy">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <ul id="ns-list" class="ns-list"></ul>
+      </section>
       <p id="rec-info" class="rec-info" hidden><span id="rec-state">Nagrywanie</span> · <span id="rec-time">0:00</span> · <span id="rec-km">0 km</span></p>
       <div class="rec-row">
         <button id="btn-pause" class="rec pause" type="button" hidden>
@@ -101,6 +110,10 @@
       <h2>Dane</h2>
       <div class="tools">
         <button id="btn-trips" class="tool" type="button">Nagrane trasy</button>
+        <button id="btn-notify" class="tool tool-switch" type="button" role="switch" aria-checked="false">
+          <span>Powiadomienia o nowych ulicach</span><span class="sw-ui" aria-hidden="true"></span>
+        </button>
+        <p id="notify-hint" class="fine" hidden></p>
         <label class="tool">Importuj trasy GPX<input id="in-gpx" type="file" accept=".gpx,application/gpx+xml" multiple></label>
         <button id="btn-export" class="tool" type="button">Zapisz kopię zapasową</button>
         <label class="tool">Wczytaj kopię zapasową<input id="in-backup" type="file" accept=".json,application/json"></label>

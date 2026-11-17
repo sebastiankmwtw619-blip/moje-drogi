@@ -278,6 +278,7 @@ async function stopRec() {
     setStatus('Trasa była za krótka, nie zapisałem jej.');
     return;
   }
+  tr.notify = true; // po rozpoznaniu ulic pokaż podsumowanie nowych ulic (i powiadomienie)
   await dbPut('trips', tr);
   state.trips.push(tr);
   drawTrips();
@@ -368,6 +369,13 @@ async function processPending() {
     for (const t of state.trips.filter((x) => !x.processed && !x.recording)) {
       await processTrip(t);
       rebuild();
+      if (t.notify && state.trips.includes(t)) {
+        delete t.notify;
+        await dbPut('trips', t);
+        const r = newStreetsOf(t);
+        showNewStreetsCard(t, r);
+        notifyNewStreets(t, r);
+      }
     }
     if (!state.rec) setStatus('');
   } catch (e) {
@@ -854,6 +862,107 @@ function groupHead(name, n, m) {
   return el('li', { class: 'group' },
     el('span', { class: 'n' }, name),
     el('span', { class: 'm' }, `${n} ${plural(n, 'ulica', 'ulice', 'ulic')}${m != null ? ' · ' + fmtKm(m) : ''}`));
+}
+
+/* ---------------- Nowe ulice po trasie: karta w aplikacji i powiadomienie ---------------- */
+/** Ulice i miejscowości z tej trasy, których nie było na żadnej wcześniejszej trasie. */
+function newStreetsOf(t) {
+  const seen = new Set(), seenTowns = new Set();
+  for (const o of state.trips) {
+    if (o === t || !o.processed || o.start >= t.start) continue;
+    for (const [town, sts] of Object.entries(o.streets || {})) {
+      seenTowns.add(town);
+      for (const s of Object.keys(sts)) seen.add(town + '|' + s);
+    }
+  }
+  const byTown = {};
+  let count = 0;
+  for (const [town, sts] of Object.entries(t.streets || {})) {
+    if (town === NO_TOWN) continue;
+    for (const s of Object.keys(sts)) {
+      if (s === NO_STREET || seen.has(town + '|' + s)) continue;
+      (byTown[town] ??= []).push(s);
+      count++;
+    }
+  }
+  for (const list of Object.values(byTown)) list.sort((a, b) => a.localeCompare(b, 'pl'));
+  const newTowns = Object.keys(t.streets || {}).filter((x) => x !== NO_TOWN && !seenTowns.has(x));
+  return { byTown, count, newTowns };
+}
+
+function showNewStreetsCard(t, r) {
+  const card = $('#ns-card');
+  $('#ns-title').textContent = r.count
+    ? `${r.count} ${plural(r.count, 'nowa ulica', 'nowe ulice', 'nowych ulic')} z tej trasy`
+    : 'Trasa rozpoznana';
+  const ul = $('#ns-list');
+  ul.replaceChildren();
+  if (!r.count) {
+    ul.append(el('li', {}, `${fmtKm(t.km || 0)} znanymi już ulicami. Spróbuj następnym razem innej drogi.`));
+  }
+  for (const [town, streets] of Object.entries(r.byTown).sort((a, b) => b[1].length - a[1].length)) {
+    const isNew = r.newTowns.includes(town);
+    ul.append(el('li', {},
+      el('button', { class: 'ns-town', type: 'button', onclick: () => openTown(town) },
+        `${town}${isNew ? ' (nowa miejscowość)' : ''} · ${streets.length} ›`),
+      el('div', { class: 'ns-streets' }, ...streets.slice(0, 8).map((s) => el('span', { class: 'ns-chip' }, s)),
+        streets.length > 8 ? el('span', { class: 'ns-chip' }, `+${streets.length - 8}`) : null)));
+  }
+  card.hidden = false;
+}
+
+// ---- powiadomienia systemowe ----
+const notifySupported = () => 'Notification' in window;
+function notifyEnabled() {
+  try { return localStorage.getItem('notifyNewStreets') === '1' && notifySupported() && Notification.permission === 'granted'; } catch { return false; }
+}
+function renderNotifySwitch(msg) {
+  const on = notifyEnabled();
+  $('#btn-notify').setAttribute('aria-checked', String(on));
+  const hint = $('#notify-hint');
+  hint.textContent = msg || (on ? 'Po rozpoznaniu ulic dostaniesz powiadomienie z listą nowych ulic.' : '');
+  hint.hidden = !hint.textContent;
+}
+async function toggleNotify() {
+  if (notifyEnabled()) {
+    try { localStorage.setItem('notifyNewStreets', '0'); } catch {}
+    renderNotifySwitch('Powiadomienia wyłączone. Podsumowanie nowych ulic nadal pokaże się w aplikacji.');
+    return;
+  }
+  if (!notifySupported()) {
+    renderNotifySwitch('Ta przeglądarka nie obsługuje powiadomień. Na iPhonie działają po dodaniu aplikacji do ekranu początkowego (iOS 16.4 lub nowszy).');
+    return;
+  }
+  let perm = Notification.permission;
+  if (perm === 'default') { try { perm = await Notification.requestPermission(); } catch { perm = 'denied'; } }
+  if (perm !== 'granted') {
+    renderNotifySwitch('Powiadomienia są zablokowane. Włącz je w ustawieniach telefonu dla tej aplikacji i spróbuj ponownie.');
+    return;
+  }
+  try { localStorage.setItem('notifyNewStreets', '1'); } catch {}
+  renderNotifySwitch();
+}
+
+function notifyText(t, r) {
+  const parts = Object.entries(r.byTown).sort((a, b) => b[1].length - a[1].length).map(([town, s]) =>
+    `${town}: ${s.slice(0, 3).join(', ')}${s.length > 3 ? ` i ${s.length - 3} ${plural(s.length - 3, 'inna', 'inne', 'innych')}` : ''}`);
+  const towns = r.newTowns.length ? ` Nowe miejscowości: ${r.newTowns.join(', ')}.` : '';
+  return {
+    title: `${r.count} ${plural(r.count, 'nowa ulica', 'nowe ulice', 'nowych ulic')} na trasie (${fmtKm(t.km || 0)})`,
+    body: parts.join(' · ') + (towns ? '.' + towns : ''),
+  };
+}
+async function notifyNewStreets(t, r) {
+  if (!r.count || !notifyEnabled()) return;
+  const { title, body } = notifyText(t, r);
+  const opts = { body, icon: 'icon.svg', badge: 'icon.svg', tag: 'trip-' + t.id, data: { url: './' } };
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) await reg.showNotification(title, opts);
+    else new Notification(title, opts);
+  } catch (e) {
+    console.warn('powiadomienie', e);
+  }
 }
 
 /* ---------------- Wszystkie ulice w jednym miejscu ---------------- */
@@ -1470,6 +1579,9 @@ document.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', ()
 $('#btn-back').addEventListener('click', () => showView('view-towns'));
 $('#btn-trips').addEventListener('click', () => showView('view-trips'));
 $('#btn-theme').addEventListener('click', cycleMapTheme);
+$('#btn-notify').addEventListener('click', toggleNotify);
+$('#ns-close').addEventListener('click', () => { $('#ns-card').hidden = true; });
+renderNotifySwitch();
 applyMapTheme();
 $('#per-week').addEventListener('click', () => { statState.mode = 'week'; statState.sel = null; renderStats(); });
 $('#per-month').addEventListener('click', () => { statState.mode = 'month'; statState.sel = null; renderStats(); });
