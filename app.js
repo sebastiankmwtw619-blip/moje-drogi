@@ -88,7 +88,12 @@ const state = {
   follow: true,
   sort: 'last',
   detailTab: 'streets',
+  focus: null,        // miejscowość wybrana w wyszukiwarce: { name, lat, lon }
+  filter: '',         // filtr listy miejscowości
 };
+
+// porównywanie nazw bez wielkości liter i polskich znaków („lodz” znajdzie „Łódź”)
+const norm = (s) => s.toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 
 function setStatus(msg) { $('#status').textContent = msg || ''; }
 
@@ -384,12 +389,23 @@ function townsSorted() {
 /* ---------------- Widoki ---------------- */
 function renderAll() { renderSheet(); renderTowns(); renderTown(); }
 
+function sheetTown() {
+  if (state.focus) return state.agg[state.focus.name] || null;
+  return [...townsSorted()].sort((a, b) => b.last - a.last)[0] || null;
+}
+
 function renderSheet() {
   const towns = townsSorted();
-  const recent = [...towns].sort((a, b) => b.last - a.last)[0];
+  const recent = sheetTown();
   const total = state.trips.reduce((s, t) => s + (t.km || 0), 0);
   $('#st-towns').textContent = towns.length;
   $('#st-total').textContent = fmtKm(total);
+  if (state.focus && !recent) {
+    $('#sheet-label').textContent = `${state.focus.name} · wyszukana`;
+    $('#sheet-big').textContent = '0 ulic';
+    $('#st-km').textContent = '0 km';
+    return;
+  }
   if (!recent) {
     $('#sheet-label').textContent = 'Jeszcze brak przejazdów';
     $('#sheet-big').textContent = '0 ulic';
@@ -398,7 +414,7 @@ function renderSheet() {
   }
   const pr = progress(recent);
   const n = namedCount(recent);
-  $('#sheet-label').textContent = `${recent.name} · ostatnio odwiedzona`;
+  $('#sheet-label').textContent = `${recent.name} · ${state.focus ? 'wyszukana' : 'ostatnio odwiedzona'}`;
   $('#sheet-big').textContent = pr ? `${pr.pct}% ulic` : `${n} ${plural(n, 'ulica', 'ulice', 'ulic')}`;
   $('#st-km').textContent = fmtKm(recent.m);
 }
@@ -410,9 +426,12 @@ function renderTowns() {
   $('#t-km').textContent = fmtKm(state.trips.reduce((s, t) => s + (t.km || 0), 0));
   $('#t-streets').textContent = allStreets;
   $('#towns-empty').hidden = towns.length > 0;
+  const f = norm(state.filter);
+  const shown = f ? towns.filter((T) => norm(T.name).includes(f)) : towns;
+  $('#towns-nomatch').hidden = !(towns.length && !shown.length);
   const ul = $('#town-list');
   ul.replaceChildren();
-  for (const T of towns) {
+  for (const T of shown) {
     const pr = progress(T);
     const n = namedCount(T);
     const bar = el('i');
@@ -601,9 +620,135 @@ $('#btn-follow').addEventListener('click', () => {
   if (state.follow && posMarker) map.setView(posMarker.getLatLng(), Math.max(map.getZoom(), 16));
 });
 $('#sheet-details').addEventListener('click', () => {
-  const recent = townsSorted().sort((a, b) => b.last - a.last)[0];
-  if (recent) openTown(recent.name); else showView('view-town');
+  const T = sheetTown();
+  if (T) openTown(T.name);
+  else if (state.focus) setStatus(`W miejscowości ${state.focus.name} jeszcze nie jeździłeś.`);
+  else showView('view-town');
 });
+
+/* ---------------- Wyszukiwanie miejscowości ---------------- */
+// Własne miejscowości podpowiadamy od razu; pozostałe szukamy w Nominatim dopiero po Enter
+// (zasady Nominatim nie pozwalają na zapytania przy każdym naciśnięciu klawisza).
+let focusMarker = null, searchCtl = null;
+const qInput = $('#q'), resultsEl = $('#results');
+
+function closeResults() { resultsEl.hidden = true; resultsEl.replaceChildren(); }
+
+function resultButton(name, sub, tag, onPick) {
+  const b = el('button', { type: 'button' },
+    el('span', {}, el('span', { class: 'r-name' }, name), sub ? el('span', { class: 'r-sub' }, sub) : null),
+    tag ? el('span', { class: 'r-tag' }, tag) : null);
+  b.addEventListener('click', onPick);
+  return el('li', {}, b);
+}
+
+function localMatches(q) {
+  const f = norm(q);
+  if (!f) return [];
+  return Object.values(state.agg)
+    .filter((T) => T.name !== NO_TOWN && norm(T.name).includes(f))
+    .sort((a, b) => (norm(a.name).startsWith(f) ? 0 : 1) - (norm(b.name).startsWith(f) ? 0 : 1) || b.last - a.last)
+    .slice(0, 6);
+}
+
+function renderResults(q, remote, info) {
+  resultsEl.replaceChildren();
+  const local = localMatches(q);
+  const localNames = new Set(local.map((T) => T.name));
+  for (const T of local) {
+    const n = namedCount(T);
+    resultsEl.append(resultButton(T.name, `${n} ${plural(n, 'ulica', 'ulice', 'ulic')} · ${fmtKm(T.m)}`, 'Twoja', () => pickLocal(T)));
+  }
+  for (const r of remote || []) {
+    if (localNames.has(r.name)) continue;
+    resultsEl.append(resultButton(r.name, r.sub, null, () => pickRemote(r)));
+  }
+  if (info) resultsEl.append(el('li', { class: 'r-info' }, info));
+  else if (!local.length && !remote) resultsEl.append(el('li', { class: 'r-info' }, 'Naciśnij Enter, żeby wyszukać w promieniu 120 km.'));
+  resultsEl.hidden = !resultsEl.children.length;
+}
+
+async function searchRemote(q) {
+  searchCtl?.abort();
+  searchCtl = new AbortController();
+  renderResults(q, null, 'Szukam…');
+  const dLat = RADIUS_KM / 111, dLon = RADIUS_KM / (111 * Math.cos(KRAKOW[0] * Math.PI / 180));
+  const viewbox = [KRAKOW[1] - dLon, KRAKOW[0] + dLat, KRAKOW[1] + dLon, KRAKOW[0] - dLat].map((v) => v.toFixed(4)).join(',');
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&countrycodes=pl&featureType=settlement&accept-language=pl&bounded=1&viewbox=${viewbox}&q=${encodeURIComponent(q)}`;
+  try {
+    const r = await fetch(url, { signal: searchCtl.signal });
+    if (!r.ok) throw new Error('nominatim ' + r.status);
+    const list = (await r.json())
+      .map((x) => {
+        const a = x.address || {};
+        const name = a.city || a.town || a.village || a.hamlet || x.name;
+        const lat = +x.lat, lon = +x.lon;
+        const km = Math.round(dist(KRAKOW, [lat, lon]) / 1000);
+        return { name, lat, lon, bbox: x.boundingbox?.map(Number), sub: [a.municipality, a.county, `${km} km od Krakowa`].filter(Boolean).join(' · ') };
+      })
+      .filter((x) => x.name && !/^(gmina|powiat|województwo)\s/i.test(x.name) && dist(KRAKOW, [x.lat, x.lon]) <= RADIUS_KM * 1000);
+    const seen = new Set();
+    const uniq = list.filter((x) => { const k = x.name + x.sub; if (seen.has(k)) return false; seen.add(k); return true; });
+    renderResults(q, uniq, uniq.length || localMatches(q).length ? null : 'Nie znalazłem takiej miejscowości w promieniu 120 km.');
+  } catch (e) {
+    if (e.name === 'AbortError') return;
+    renderResults(q, [], 'Wyszukiwanie nie działa bez internetu.');
+  }
+}
+
+function focusOn(name, lat, lon, bbox) {
+  state.focus = { name, lat, lon };
+  qInput.value = name;
+  $('#q-clear').hidden = false;
+  closeResults();
+  qInput.blur();
+  setFollow(false);
+  if (!focusMarker) {
+    focusMarker = L.circleMarker([lat, lon], { radius: 9, color: '#fff', weight: 3, fillColor: '#1D4ED8', fillOpacity: 1 }).addTo(map);
+  } else focusMarker.setLatLng([lat, lon]);
+  focusMarker.bindTooltip(name, { permanent: true, direction: 'top', offset: [0, -10] }).openTooltip();
+  if (bbox && bbox.length === 4) map.fitBounds([[bbox[0], bbox[2]], [bbox[1], bbox[3]]], { padding: [30, 30], maxZoom: 15 });
+  else map.setView([lat, lon], 14);
+  renderSheet();
+  if (!state.agg[name]) setStatus(`W miejscowości ${name} jeszcze nie jeździłeś.`);
+  else setStatus('');
+}
+
+function pickLocal(T) {
+  const pts = T.trips.flatMap((t) => t.points.map((p) => [p[0], p[1]]));
+  const c = T.pt || pts[0];
+  showView('view-map');
+  focusOn(T.name, c[0], c[1], null);
+  if (pts.length) map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], maxZoom: 15 });
+}
+function pickRemote(r) { focusOn(r.name, r.lat, r.lon, r.bbox); }
+
+function clearSearch() {
+  searchCtl?.abort();
+  state.focus = null;
+  qInput.value = '';
+  $('#q-clear').hidden = true;
+  closeResults();
+  if (focusMarker) { focusMarker.remove(); focusMarker = null; }
+  setStatus('');
+  renderSheet();
+}
+
+qInput.addEventListener('input', () => {
+  $('#q-clear').hidden = !qInput.value;
+  if (!qInput.value.trim()) { closeResults(); return; }
+  renderResults(qInput.value, null, null);
+});
+qInput.addEventListener('focus', () => { if (qInput.value.trim() && !state.focus) renderResults(qInput.value, null, null); });
+$('#search-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = qInput.value.trim();
+  if (q.length >= 2) searchRemote(q);
+});
+$('#q-clear').addEventListener('click', () => { clearSearch(); qInput.focus(); });
+qInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeResults(); });
+document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.search-wrap')) closeResults(); });
+$('#town-filter').addEventListener('input', (e) => { state.filter = e.target.value; renderTowns(); });
 document.querySelectorAll('.tabbar button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
 document.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', () => {
   state.sort = b.dataset.sort;
