@@ -49,7 +49,19 @@ function dist(a, b) {
   const x = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(x));
 }
-function trackLen(p) { let s = 0; for (let i = 1; i < p.length; i++) s += dist(p[i - 1], p[i]); return s; }
+// Punkt trasy: [lat, lon, czas, przerwa?] — 4. pole = 1 oznacza początek nowego odcinka po wznowieniu nagrywania.
+function trackLen(p) { let s = 0; for (let i = 1; i < p.length; i++) if (!p[i][3]) s += dist(p[i - 1], p[i]); return s; }
+function segmentsOf(p) {
+  const out = [];
+  let cur = [];
+  for (const q of p) {
+    if (q[3] && cur.length) { out.push(cur); cur = []; }
+    cur.push([q[0], q[1]]);
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+const activeMs = (t, now = Date.now()) => ((t.paused ? t.pausedAt : t.end ?? now) - t.start) - (t.pausedMs || 0);
 
 /* ---------------- IndexedDB ---------------- */
 let idb;
@@ -111,6 +123,7 @@ function initMap() {
   }).addTo(map);
   L.circle(KRAKOW, { radius: RADIUS_KM * 1000, color: '#64748B', weight: 1.5, dashArray: '6 8', fill: false, interactive: false }).addTo(map);
   visitedLayer = L.layerGroup().addTo(map);
+  recPast = L.layerGroup().addTo(map);
   recLine = L.polyline([], { color: '#EA580C', weight: 6, opacity: 0.95 }).addTo(map);
   map.on('dragstart', () => setFollow(false));
 }
@@ -118,7 +131,7 @@ function drawTrips() {
   visitedLayer.clearLayers();
   for (const t of state.trips) {
     if (t.recording || t.points.length < 2) continue;
-    L.polyline(t.points.map((p) => [p[0], p[1]]), { color: GREEN, weight: 5, opacity: 0.85, interactive: false }).addTo(visitedLayer);
+    L.polyline(segmentsOf(t.points), { color: GREEN, weight: 5, opacity: 0.85, interactive: false }).addTo(visitedLayer);
   }
 }
 function showPos(lat, lon, acc) {
@@ -148,25 +161,64 @@ function fitTown(name) {
 }
 
 /* ---------------- Nagrywanie GPS ---------------- */
-let watchId = null, wakeLock = null, recTimer = null, lastSave = 0;
+let watchId = null, wakeLock = null, recTimer = null, lastSave = 0, recPast = null;
+
+function startWatch() {
+  watchId = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  requestWake();
+}
+async function stopWatch() {
+  if (watchId != null) navigator.geolocation.clearWatch(watchId);
+  watchId = null;
+  try { await wakeLock?.release(); } catch {}
+  wakeLock = null;
+}
+
+async function pauseRec() {
+  const tr = state.rec;
+  if (!tr || tr.paused) return;
+  await stopWatch();
+  tr.paused = true;
+  tr.pausedAt = Date.now();
+  // dotychczasowy odcinek zostaje na mapie, nowy zacznie się po wznowieniu (bez linii przez przerwę)
+  if (recLine.getLatLngs().length) L.polyline(recLine.getLatLngs(), { color: '#EA580C', weight: 6, opacity: 0.6, interactive: false }).addTo(recPast);
+  recLine.setLatLngs([]);
+  await dbPut('trips', tr);
+  updateRecUi();
+  setStatus('Nagrywanie wstrzymane. GPS jest wyłączony, przerwa nie liczy się do trasy.');
+}
+
+async function resumeRec() {
+  const tr = state.rec;
+  if (!tr || !tr.paused) return;
+  tr.pausedMs = (tr.pausedMs || 0) + (Date.now() - tr.pausedAt);
+  tr.paused = false;
+  tr.pausedAt = null;
+  tr.gapNext = true;
+  setFollow(true);
+  startWatch();
+  await dbPut('trips', tr);
+  updateRecUi();
+  setStatus('Wznowiono nagrywanie. Szukam sygnału GPS…');
+}
 
 async function requestWake() {
   try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch { wakeLock = null; }
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && state.rec && !wakeLock) requestWake();
+  if (document.visibilityState === 'visible' && state.rec && !state.rec.paused && !wakeLock) requestWake();
   if (document.visibilityState === 'hidden' && state.rec) dbPut('trips', state.rec).catch(() => {});
 });
 
 async function startRec() {
   if (!('geolocation' in navigator)) { setStatus('Ta przeglądarka nie udostępnia GPS.'); return; }
   if (!window.isSecureContext) { setStatus('GPS działa tylko pod adresem https://. Otwórz aplikację z bezpiecznego adresu.'); return; }
-  const trip = { id: 't' + Date.now(), start: Date.now(), end: null, points: [], recording: true, processed: false, source: 'gps' };
+  const trip = { id: 't' + Date.now(), start: Date.now(), end: null, points: [], recording: true, processed: false, source: 'gps', pausedMs: 0, paused: false };
   state.rec = trip;
   recLine.setLatLngs([]);
+  recPast.clearLayers();
   setFollow(true);
-  watchId = navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
-  requestWake();
+  startWatch();
   recTimer = setInterval(updateRecUi, 1000);
   updateRecUi();
   setStatus('Szukam sygnału GPS…');
@@ -177,11 +229,14 @@ function onPos(pos) {
   const { latitude: lat, longitude: lon, accuracy } = pos.coords;
   showPos(lat, lon, accuracy);
   const tr = state.rec;
-  if (!tr) return;
+  if (!tr || tr.paused) return;
   if (accuracy > MAX_ACCURACY_M) { setStatus(`Słaby sygnał GPS (±${Math.round(accuracy)} m), czekam…`); return; }
   const p = [+lat.toFixed(6), +lon.toFixed(6), pos.timestamp];
   const last = tr.points[tr.points.length - 1];
-  if (last) {
+  if (tr.gapNext && last) {
+    p.push(1); // pierwszy punkt po wznowieniu: nowy odcinek
+    tr.gapNext = false;
+  } else if (last) {
     const d = dist(last, p);
     if (d < MIN_STEP_M) return;
     const dt = (p[2] - last[2]) / 1000;
@@ -204,14 +259,16 @@ function onPosErr(err) {
 
 async function stopRec() {
   const tr = state.rec;
-  if (watchId != null) navigator.geolocation.clearWatch(watchId);
-  watchId = null;
+  await stopWatch();
   clearInterval(recTimer);
-  try { await wakeLock?.release(); } catch {}
-  wakeLock = null;
   state.rec = null;
+  recPast.clearLayers();
   updateRecUi();
   if (!tr) return;
+  if (tr.paused) tr.pausedMs = (tr.pausedMs || 0) + (Date.now() - tr.pausedAt);
+  tr.paused = false;
+  tr.pausedAt = null;
+  tr.gapNext = false;
   tr.recording = false;
   tr.end = Date.now();
   tr.km = trackLen(tr.points);
@@ -229,11 +286,20 @@ async function stopRec() {
 }
 
 function updateRecUi() {
-  const on = !!state.rec;
+  const tr = state.rec;
+  const on = !!tr;
   $('#btn-rec').classList.toggle('on', on);
-  $('#rec-label').textContent = on
-    ? `Zatrzymaj · ${fmtDur(Date.now() - state.rec.start)} · ${fmtKm(trackLen(state.rec.points))}`
-    : 'Rozpocznij nagrywanie trasy';
+  $('#rec-label').textContent = on ? 'Zakończ' : 'Rozpocznij nagrywanie trasy';
+  $('#btn-pause').hidden = !on;
+  $('#rec-info').hidden = !on;
+  if (!on) return;
+  $('#btn-pause').classList.toggle('resume', !!tr.paused);
+  $('#pause-label').textContent = tr.paused ? 'Wznów' : 'Wstrzymaj';
+  $('#pause-icon').innerHTML = tr.paused ? '<path d="M7 5l12 7-12 7z"/>' : '<path d="M9 5v14M15 5v14"/>';
+  $('#rec-info').classList.toggle('paused', !!tr.paused);
+  $('#rec-state').textContent = tr.paused ? 'Wstrzymane' : 'Nagrywanie';
+  $('#rec-time').textContent = fmtDur(activeMs(tr));
+  $('#rec-km').textContent = fmtKm(trackLen(tr.points));
 }
 
 /* ---------------- Rozpoznawanie ulic (Nominatim) ---------------- */
@@ -266,7 +332,7 @@ async function processTrip(t) {
   const samples = [{ p: pts[0], d: 0 }];
   let since = 0;
   for (let i = 1; i < pts.length; i++) {
-    since += dist(pts[i - 1], pts[i]);
+    if (!pts[i][3]) since += dist(pts[i - 1], pts[i]); // przerwy w nagrywaniu nie liczą się do odległości
     if (since >= SAMPLE_M) { samples.push({ p: pts[i], d: since }); since = 0; }
   }
   if (since > 0) samples.push({ p: pts[pts.length - 1], d: since });
@@ -763,7 +829,7 @@ function renderTown() {
       list.append(el('li', {},
         el('span', { class: 'date' }, el('b', {}, String(d.getDate())), el('span', {}, d.toLocaleDateString('pl-PL', { month: 'short' }))),
         el('span', { class: 'n' }, `${fmtKm(inTown)} w miejscowości, ${nSt} ${plural(nSt, 'ulica', 'ulice', 'ulic')}`,
-          el('br'), el('span', { class: 'm' }, `cała trasa ${fmtKm(t.km || 0)}${t.end ? ' · ' + fmtDur(t.end - t.start) : ''}${t.source === 'gpx' ? ' · GPX' : ''}`)),
+          el('br'), el('span', { class: 'm' }, `cała trasa ${fmtKm(t.km || 0)}${t.end ? ' · ' + fmtDur(activeMs(t)) : ''}${t.source === 'gpx' ? ' · GPX' : ''}`)),
         del));
     }
   }
@@ -886,7 +952,7 @@ async function deleteTrips(ids) {
 
 function showTripOnMap(t) {
   if (highlight) highlight.remove();
-  highlight = L.polyline(t.points.map((p) => [p[0], p[1]]), { color: '#1D4ED8', weight: 7, opacity: 0.9 }).addTo(map);
+  highlight = L.polyline(segmentsOf(t.points), { color: '#1D4ED8', weight: 7, opacity: 0.9 }).addTo(map);
   highlight.tripId = t.id;
   setFollow(false);
   showView('view-map');
@@ -918,7 +984,7 @@ function renderTrips() {
     const towns = tripTowns(t);
     const when = d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' +
       d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
-    const meta = `${fmtKm(t.km || 0)}${t.end ? ' · ' + fmtDur(t.end - t.start) : ''}${t.source === 'gpx' ? ' · GPX' : ''}`;
+    const meta = `${fmtKm(t.km || 0)}${t.end ? ' · ' + fmtDur(activeMs(t)) : ''}${t.pausedMs > 60000 ? ' (bez przerw)' : ''}${t.source === 'gpx' ? ' · GPX' : ''}`;
     const where = t.processed ? (towns.length ? towns.join(', ') : 'poza miejscowościami') : 'rozpoznaję ulice…';
     const id = 'trip-' + t.id;
     const info = el(tripSel.on ? 'label' : 'span', tripSel.on ? { class: 'tinfo', for: id } : { class: 'tinfo' },
@@ -1020,13 +1086,22 @@ async function init() {
   state.trips = await dbAll('trips');
   for (const m of await dbAll('towns')) state.townMeta[m.name] = m;
   // trasa przerwana zamknięciem aplikacji: zapisz ją jako zakończoną
-  for (const t of state.trips.filter((x) => x.recording)) {
+  // wstrzymana trasa czeka na wznowienie także po zamknięciu aplikacji
+  const pausedTrip = state.trips.filter((x) => x.recording && x.paused).sort((a, b) => b.start - a.start)[0];
+  for (const t of state.trips.filter((x) => x.recording && x !== pausedTrip)) {
     t.recording = false;
     t.end = t.points.length ? t.points[t.points.length - 1][2] : t.start;
     t.km = trackLen(t.points);
     if (t.points.length < 3) { await dbDel('trips', t.id); } else await dbPut('trips', t);
   }
-  state.trips = state.trips.filter((t) => t.points.length >= 3 || t.source === 'gpx');
+  state.trips = state.trips.filter((t) => t !== pausedTrip && (t.points.length >= 3 || t.source === 'gpx'));
+  if (pausedTrip) {
+    state.rec = pausedTrip;
+    for (const seg of segmentsOf(pausedTrip.points)) L.polyline(seg, { color: '#EA580C', weight: 6, opacity: 0.6, interactive: false }).addTo(recPast);
+    recTimer = setInterval(updateRecUi, 1000);
+    updateRecUi();
+    setStatus('Masz wstrzymaną trasę. Stuknij „Wznów”, żeby jechać dalej, albo „Zakończ”.');
+  }
   // trasy rozpoznane starszą wersją przeliczamy jeszcze raz, żeby dostały podział na osiedla
   for (const t of state.trips) if (t.processed && t.v !== TRIP_V) t.processed = false;
   rebuild();
@@ -1042,6 +1117,7 @@ async function init() {
 }
 
 $('#btn-rec').addEventListener('click', () => (state.rec ? stopRec() : startRec()));
+$('#btn-pause').addEventListener('click', () => (state.rec?.paused ? resumeRec() : pauseRec()));
 $('#btn-layer').addEventListener('click', () => {
   state.showVisited = !state.showVisited;
   $('#btn-layer').classList.toggle('on', state.showVisited);

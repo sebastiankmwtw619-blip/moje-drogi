@@ -122,6 +122,13 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .rec .dot { width: 12px; height: 12px; border-radius: 6px; background: currentColor; }
 .rec.on { background: var(--danger); color: #fff; }
 .rec.on .dot { border-radius: 2px; }
+.rec-row { display: flex; gap: 8px; }
+.rec-row .rec { flex: 1; min-width: 0; }
+.rec.pause { background: var(--surface); color: var(--fg); border: 2px solid var(--line); }
+.rec.pause svg { width: 20px; height: 20px; stroke-width: 2.5; }
+.rec.pause.resume { background: var(--accent); color: #fff; border-color: var(--accent); }
+.rec-info { margin: 0; font: 600 15px var(--font-ui); font-variant-numeric: tabular-nums; color: var(--fg); }
+.rec-info.paused #rec-state { color: var(--now); }
 .status { margin: 0; min-height: 1.2em; font-size: 12px; color: var(--muted); }
 
 /* ---------- Strony ---------- */

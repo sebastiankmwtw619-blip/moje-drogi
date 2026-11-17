@@ -59,7 +59,14 @@
         <div><b id="st-towns">0</b><span>miejscowości</span></div>
         <div><b id="st-total">0 km</b><span>wszystkie trasy</span></div>
       </div>
-      <button id="btn-rec" class="rec" type="button"><span class="dot"></span><span id="rec-label">Rozpocznij nagrywanie trasy</span></button>
+      <p id="rec-info" class="rec-info" hidden><span id="rec-state">Nagrywanie</span> · <span id="rec-time">0:00</span> · <span id="rec-km">0 km</span></p>
+      <div class="rec-row">
+        <button id="btn-pause" class="rec pause" type="button" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true" id="pause-icon"><path d="M9 5v14M15 5v14"/></svg>
+          <span id="pause-label">Wstrzymaj</span>
+        </button>
+        <button id="btn-rec" class="rec" type="button"><span class="dot"></span><span id="rec-label">Rozpocznij nagrywanie trasy</span></button>
+      </div>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </div>
   </section>
