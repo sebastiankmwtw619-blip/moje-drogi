@@ -669,7 +669,7 @@ function townsSorted() {
 }
 
 /* ---------------- Widoki ---------------- */
-function renderAll() { renderSheet(); renderTowns(); renderTown(); renderStreets(); renderTrips(); }
+function renderAll() { renderSheet(); renderTowns(); renderTown(); renderStreets(); renderTrips(); renderStats(); }
 
 function sheetTown() {
   if (state.focus) return state.agg[state.focus.name] || null;
@@ -1018,9 +1018,182 @@ function svgIcon(d) {
   return svg;
 }
 
+/* ---------------- Statystyki tygodniowe i miesięczne ---------------- */
+const statState = { mode: 'week', sel: null };
+const N_PERIODS = 12;
+const MONTHS_SHORT = ['sty', 'lut', 'mar', 'kwi', 'maj', 'cze', 'lip', 'sie', 'wrz', 'paź', 'lis', 'gru'];
+const MONTHS_FULL = ['styczeń', 'luty', 'marzec', 'kwiecień', 'maj', 'czerwiec', 'lipiec', 'sierpień', 'wrzesień', 'październik', 'listopad', 'grudzień'];
+
+function periodStart(t, mode) {
+  const d = new Date(t);
+  if (mode === 'month') return new Date(d.getFullYear(), d.getMonth(), 1).getTime();
+  const day = (d.getDay() + 6) % 7; // poniedziałek = 0
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() - day).getTime();
+}
+function shiftPeriod(start, mode, k) {
+  const d = new Date(start);
+  return mode === 'month'
+    ? new Date(d.getFullYear(), d.getMonth() + k, 1).getTime()
+    : new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * k).getTime();
+}
+function periodLabels(start, mode) {
+  const d = new Date(start);
+  if (mode === 'month') return { short: MONTHS_SHORT[d.getMonth()], full: `${MONTHS_FULL[d.getMonth()]} ${d.getFullYear()}` };
+  const e = new Date(shiftPeriod(start, 'week', 1) - 86400000);
+  const full = d.getMonth() === e.getMonth()
+    ? `${d.getDate()}–${e.getDate()} ${MONTHS_SHORT[e.getMonth()]} ${e.getFullYear()}`
+    : `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} – ${e.getDate()} ${MONTHS_SHORT[e.getMonth()]} ${e.getFullYear()}`;
+  return { short: `${d.getDate()}.${String(d.getMonth() + 1).padStart(2, '0')}`, full };
+}
+
+/** Ostatnie 12 tygodni albo miesięcy: kilometry, liczba tras i nowe ulice (pierwszy raz przejechane). */
+function periodStats(mode) {
+  const cur = periodStart(Date.now(), mode);
+  const periods = [];
+  for (let k = N_PERIODS - 1; k >= 0; k--) {
+    const start = shiftPeriod(cur, mode, -k);
+    periods.push({ start, ...periodLabels(start, mode), m: 0, trips: 0, newStreets: 0, current: k === 0 });
+  }
+  const idx = new Map(periods.map((p, i) => [p.start, i]));
+  const firstSeen = new Map();
+  for (const t of [...state.trips].sort((a, b) => a.start - b.start)) {
+    const i = idx.get(periodStart(t.start, mode));
+    if (i != null) { periods[i].m += t.km || 0; periods[i].trips++; }
+    for (const [town, sts] of Object.entries(t.streets || {})) {
+      if (town === NO_TOWN) continue;
+      for (const s of Object.keys(sts)) {
+        if (s === NO_STREET) continue;
+        const key = town + '|' + s;
+        if (!firstSeen.has(key)) {
+          firstSeen.set(key, true);
+          if (i != null) periods[i].newStreets++;
+        }
+      }
+    }
+  }
+  // najlepszy okres w całej historii (nie tylko w ostatnich 12)
+  const all = new Map();
+  for (const t of state.trips) { const k = periodStart(t.start, mode); all.set(k, (all.get(k) || 0) + (t.km || 0)); }
+  let best = null;
+  for (const [k, m] of all) if (!best || m > best.m) best = { start: k, m };
+  return { periods, best };
+}
+
+function niceStep(max) {
+  const raw = max / 4;
+  const p = 10 ** Math.floor(Math.log10(raw));
+  for (const f of [1, 2, 2.5, 5, 10]) if (f * p >= raw) return f * p;
+  return 10 * p;
+}
+const kmNum = (m) => (m < 10000 ? nf1 : nf0).format(m / 1000);
+
+function renderStats() {
+  if (!$('#view-stats').classList.contains('active') && renderStats.done) return;
+  renderStats.done = true;
+  const mode = statState.mode;
+  const week = mode === 'week';
+  const { periods, best } = periodStats(mode);
+  const cur = periods[periods.length - 1], prev = periods[periods.length - 2];
+  const avg = periods.slice(0, -1).reduce((x, p) => x + p.m, 0) / (periods.length - 1);
+
+  $('#per-week').setAttribute('aria-selected', String(week));
+  $('#per-month').setAttribute('aria-selected', String(!week));
+  $('#ps-cur').textContent = fmtKm(cur.m);
+  $('#ps-cur-l').textContent = week ? 'ten tydzień' : 'ten miesiąc';
+  $('#ps-prev').textContent = fmtKm(prev.m);
+  $('#ps-prev-l').textContent = week ? 'poprzedni tydzień' : 'poprzedni miesiąc';
+  $('#ps-avg').textContent = fmtKm(avg);
+  $('#ps-avg-l').textContent = week ? 'średnio (11 pełnych tyg.)' : 'średnio (11 pełnych mies.)';
+  const diff = cur.m - prev.m;
+  $('#ps-delta').textContent = !cur.m && !prev.m ? ''
+    : `${week ? 'W tym tygodniu' : 'W tym miesiącu'} ${diff >= 0 ? 'o ' + fmtKm(diff) + ' więcej' : 'o ' + fmtKm(-diff) + ' mniej'} niż ${week ? 'w poprzednim' : 'w poprzednim'}` +
+      ` · ${cur.newStreets} ${plural(cur.newStreets, 'nowa ulica', 'nowe ulice', 'nowych ulic')}`;
+  $('#ps-best').textContent = best ? fmtKm(best.m) : '0 km';
+  $('#ps-best-l').textContent = best ? `najlepszy ${week ? 'tydzień' : 'miesiąc'}: ${periodLabels(best.start, mode).full}` : `najlepszy ${week ? 'tydzień' : 'miesiąc'}`;
+  $('#ps-total').textContent = fmtKm(state.trips.reduce((x, t) => x + (t.km || 0), 0));
+  $('#ps-longest').textContent = fmtKm(Math.max(0, ...state.trips.map((t) => t.km || 0)));
+  $('#chart-title').textContent = week ? 'Kilometry w ostatnich 12 tygodniach' : 'Kilometry w ostatnich 12 miesiącach';
+  $('#th-period').textContent = week ? 'Tydzień' : 'Miesiąc';
+
+  // tabela (ta sama treść co wykres, bez najeżdżania)
+  $('#chart-tbody').replaceChildren(...[...periods].reverse().map((p) =>
+    el('tr', {}, el('td', {}, p.full + (p.current ? ' (trwa)' : '')), el('td', {}, kmNum(p.m)), el('td', {}, String(p.trips)), el('td', {}, String(p.newStreets)))));
+
+  drawChart(periods);
+}
+
+function drawChart(periods) {
+  const box = $('#chart');
+  const W = Math.max(280, box.clientWidth || 340), H = 220;
+  const padL = 34, padR = 6, padT = 22, padB = 26;
+  const maxM = Math.max(...periods.map((p) => p.m));
+  const maxKm = maxM / 1000;
+  const step = maxKm > 0 ? niceStep(maxKm) : 1;
+  const top = maxKm > 0 ? Math.ceil(maxKm / step) * step : 4;
+  const y = (km) => padT + (H - padT - padB) * (1 - km / top);
+  const band = (W - padL - padR) / periods.length;
+  const bw = Math.min(24, band - 4);
+  const ns = 'http://www.w3.org/2000/svg';
+  const mk = (tag, attrs, text) => {
+    const e = document.createElementNS(ns, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (text != null) e.textContent = text;
+    return e;
+  };
+  const svg = mk('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Wykres słupkowy kilometrów, ${periods.length} okresów. Wartości są też w tabeli pod wykresem.` });
+  for (let v = 0; v <= top + 1e-9; v += step) {
+    const yy = y(v);
+    svg.append(mk('line', { class: 'gridline', x1: padL, x2: W - padR, y1: yy, y2: yy }));
+    svg.append(mk('text', { class: 'axis-t', x: padL - 6, y: yy + 4, 'text-anchor': 'end' }, nf1.format(v)));
+  }
+  // podpisy wartości tylko przy bieżącym okresie i maksimum
+  const maxI = maxM > 0 ? periods.findIndex((p) => p.m === maxM) : -1;
+  const showX = (i) => i === periods.length - 1 || (periods.length <= 12 && (W > 420 || i % 2 === (periods.length - 1) % 2));
+  periods.forEach((p, i) => {
+    const cx = padL + band * i + band / 2;
+    const km = p.m / 1000;
+    const g = mk('g', { class: 'col' + (statState.sel === i ? ' sel' : '') });
+    if (km > 0) {
+      const h = Math.max(2, y(0) - y(km)), x0 = cx - bw / 2, yTop = y(0) - h, r = Math.min(4, bw / 2, h);
+      // zaokrąglona tylko góra słupka, podstawa prosta
+      g.append(mk('path', { class: 'bar', d: `M${x0},${y(0)} V${yTop + r} Q${x0},${yTop} ${x0 + r},${yTop} H${x0 + bw - r} Q${x0 + bw},${yTop} ${x0 + bw},${yTop + r} V${y(0)} Z` }));
+      if (i === periods.length - 1 || i === maxI) g.append(mk('text', { class: 'val-t', x: cx, y: yTop - 6, 'text-anchor': 'middle' }, kmNum(p.m)));
+    } else {
+      g.append(mk('rect', { class: 'zero', x: cx - bw / 2, y: y(0) - 1, width: bw, height: 1 }));
+    }
+    if (showX(i)) g.append(mk('text', { class: 'axis-t', x: cx, y: H - 8, 'text-anchor': 'middle' }, p.current ? (statState.mode === 'week' ? 'teraz' : p.short) : p.short));
+    const label = `${p.full}${p.current ? ' (trwa)' : ''}: ${fmtKm(p.m)}, ${p.trips} ${plural(p.trips, 'trasa', 'trasy', 'tras')}, ${p.newStreets} ${plural(p.newStreets, 'nowa ulica', 'nowe ulice', 'nowych ulic')}`;
+    const hit = mk('rect', { class: 'hit', x: padL + band * i, y: padT - 16, width: band, height: H - padT - padB + 16, tabindex: '0', role: 'button', 'aria-label': label });
+    const show = () => showTip(p, i);
+    hit.addEventListener('pointerenter', show);
+    hit.addEventListener('focus', show);
+    hit.addEventListener('click', show);
+    g.append(hit);
+    svg.append(g);
+  });
+  box.replaceChildren(svg);
+  if (statState.sel != null && periods[statState.sel]) showTip(periods[statState.sel], statState.sel, true);
+  else $('#chart-tip').hidden = true;
+}
+
+function showTip(p, i, quiet) {
+  const tip = $('#chart-tip');
+  tip.replaceChildren(
+    el('b', {}, fmtKm(p.m)),
+    el('span', {}, p.full + (p.current ? ' (trwa)' : '')),
+    el('span', {}, `${p.trips} ${plural(p.trips, 'trasa', 'trasy', 'tras')} · ${p.newStreets} ${plural(p.newStreets, 'nowa ulica', 'nowe ulice', 'nowych ulic')}`));
+  tip.hidden = false;
+  if (!quiet && statState.sel !== i) {
+    statState.sel = i;
+    document.querySelectorAll('#chart .col').forEach((c, k) => c.classList.toggle('sel', k === i));
+  }
+}
+
 function showView(id) {
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === id));
-  const tab = id === 'view-trips' ? 'view-towns' : id; // ekran tras należy do zakładki Miejscowości
+  // ekrany tras i szczegółów miejscowości należą do zakładki Miejscowości
+  const tab = id === 'view-trips' || id === 'view-town' ? 'view-towns' : id;
+  if (id === 'view-stats') setTimeout(renderStats, 0);
   document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.view === tab));
   if (id === 'view-map') setTimeout(() => map.invalidateSize(), 0);
   if (id === 'view-town') setTimeout(fitDistrictMap, 0);
@@ -1132,7 +1305,7 @@ $('#sheet-details').addEventListener('click', () => {
   const T = sheetTown();
   if (T) openTown(T.name);
   else if (state.focus) setStatus(`W miejscowości ${state.focus.name} jeszcze nie jeździłeś.`);
-  else showView('view-town');
+  else showView('view-towns');
 });
 
 /* ---------------- Wyszukiwanie miejscowości ---------------- */
@@ -1268,6 +1441,9 @@ document.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', ()
 }));
 $('#btn-back').addEventListener('click', () => showView('view-towns'));
 $('#btn-trips').addEventListener('click', () => showView('view-trips'));
+$('#per-week').addEventListener('click', () => { statState.mode = 'week'; statState.sel = null; renderStats(); });
+$('#per-month').addEventListener('click', () => { statState.mode = 'month'; statState.sel = null; renderStats(); });
+window.addEventListener('resize', () => { if ($('#view-stats').classList.contains('active')) renderStats(); });
 $('#btn-trips-back').addEventListener('click', () => { tripSel.on = false; tripSel.ids.clear(); renderTrips(); showView('view-towns'); });
 $('#btn-select').addEventListener('click', () => { tripSel.on = !tripSel.on; tripSel.ids.clear(); renderTrips(); });
 $('#btn-sel-all').addEventListener('click', () => {

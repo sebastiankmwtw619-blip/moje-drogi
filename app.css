@@ -275,3 +275,31 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 }
 .list.trips .tbtn svg { width: 20px; height: 20px; }
 .list.trips .tbtn.del { color: var(--danger); }
+
+/* ---------- Statystyki: wykres kilometrów ---------- */
+:root { --bar: #16A34A; --grid: #E5E7EB; }
+@media (prefers-color-scheme: dark) { :root { --grid: #2A2F3A; } }
+.delta { margin: -4px 0 0; font-size: 13px; color: var(--muted); }
+.chart-card { padding: 14px; display: flex; flex-direction: column; gap: 10px; position: relative; }
+.chart-card h2 { margin: 0; font-size: 16px; }
+.chart { width: 100%; min-height: 220px; }
+.chart svg { display: block; width: 100%; height: 220px; overflow: visible; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .axis-t { fill: var(--muted); stroke: none; font: 500 11px var(--font-ui); font-variant-numeric: tabular-nums; }
+.chart .val-t { fill: var(--fg); stroke: none; font: 700 11px var(--font-num); font-variant-numeric: tabular-nums; }
+.chart .bar { fill: var(--bar); stroke: none; }
+.chart .zero { fill: var(--grid); stroke: none; }
+.chart .hit { fill: transparent; stroke: none; cursor: pointer; outline: none; }
+.chart .col:hover .bar, .chart .col:focus-within .bar, .chart .col.sel .bar { fill: #15803D; }
+.chart .col:focus-visible .hit, .chart .hit:focus-visible { stroke: var(--accent); stroke-width: 2; }
+.chart-tip {
+  font-size: 13px; color: var(--muted); padding: 8px 12px; border-radius: 10px; background: var(--bg);
+  display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+}
+.chart-tip b { font: 700 16px var(--font-num); color: var(--fg); }
+.chart-table summary { cursor: pointer; font-weight: 600; color: var(--accent); min-height: 32px; display: flex; align-items: center; }
+.table-scroll { overflow-x: auto; }
+.chart-table table { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+.chart-table th, .chart-table td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.chart-table th:first-child, .chart-table td:first-child { text-align: left; }
+.chart-table th { color: var(--muted); font-weight: 600; }

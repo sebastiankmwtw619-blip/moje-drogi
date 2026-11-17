@@ -153,7 +153,46 @@
     </div>
   </section>
 
-  <!-- 4. SZCZEGÓŁY MIEJSCOWOŚCI -->
+  <!-- 4. STATYSTYKI: KILOMETRY TYGODNIOWO I MIESIĘCZNIE -->
+  <section id="view-stats" class="view" aria-label="Statystyki">
+    <div class="page">
+      <h1>Statystyki</h1>
+      <div class="seg" role="tablist" aria-label="Okres">
+        <button type="button" role="tab" id="per-week" aria-selected="true">Tygodnie</button>
+        <button type="button" role="tab" id="per-month" aria-selected="false">Miesiące</button>
+      </div>
+      <div class="tiles">
+        <div class="tile"><b id="ps-cur">0 km</b><span id="ps-cur-l">ten tydzień</span></div>
+        <div class="tile"><b id="ps-prev">0 km</b><span id="ps-prev-l">poprzedni tydzień</span></div>
+        <div class="tile"><b id="ps-avg">0 km</b><span id="ps-avg-l">średnio (12 tyg.)</span></div>
+      </div>
+      <p id="ps-delta" class="delta"></p>
+
+      <section class="card chart-card" aria-labelledby="chart-title">
+        <h2 id="chart-title">Kilometry w ostatnich 12 tygodniach</h2>
+        <div id="chart" class="chart"></div>
+        <div id="chart-tip" class="chart-tip" role="status" aria-live="polite" hidden></div>
+        <details class="chart-table">
+          <summary>Pokaż tabelę</summary>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th scope="col" id="th-period">Tydzień</th><th scope="col">Km</th><th scope="col">Trasy</th><th scope="col">Nowe ulice</th></tr></thead>
+              <tbody id="chart-tbody"></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <div class="tiles">
+        <div class="tile"><b id="ps-best">0 km</b><span id="ps-best-l">najlepszy tydzień</span></div>
+        <div class="tile"><b id="ps-total">0 km</b><span>łącznie</span></div>
+        <div class="tile"><b id="ps-longest">0 km</b><span>najdłuższa trasa</span></div>
+      </div>
+      <p class="fine">Kilometry trasy liczą się w dniu, w którym zaczęła się trasa. Tydzień zaczyna się w poniedziałek. Przerwy w nagrywaniu się nie liczą.</p>
+    </div>
+  </section>
+
+  <!-- 5. SZCZEGÓŁY MIEJSCOWOŚCI -->
   <section id="view-town" class="view" aria-label="Szczegóły miejscowości">
     <div class="page">
       <div class="town-head">
@@ -208,7 +247,7 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Miejscowości</button>
   <button type="button" data-view="view-streets">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>Ulice</button>
-  <button type="button" data-view="view-town">
+  <button type="button" data-view="view-stats">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Statystyki</button>
 </nav>
 
