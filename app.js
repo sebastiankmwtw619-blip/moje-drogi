@@ -1088,16 +1088,32 @@ function renderTrips() {
   const ul = $('#tr-list');
   ul.hidden = trips.length === 0;
   ul.replaceChildren();
+  let lastDay = null;
   for (const t of trips) {
     const d = new Date(t.start);
+    const day = dayKey(t.start);
+    if (day !== lastDay) {
+      lastDay = day;
+      const dayTrips = trips.filter((x) => dayKey(x.start) === day);
+      const dayM = dayTrips.reduce((x, y) => x + (y.km || 0), 0);
+      const head = el('li', { class: 'group day-head' },
+        el('span', { class: 'n' }, dayLabel(day)),
+        el('span', { class: 'm' }, `${dayTrips.length} ${plural(dayTrips.length, 'trasa', 'trasy', 'tras')} · ${fmtKm(dayM)}`));
+      if (!tripSel.on) {
+        head.append(el('button', { class: 'share-btn', type: 'button', 'aria-label': `Udostępnij trasy z dnia ${dayLabel(day)}`, onclick: () => openShare(day) },
+          svgIcon('M12 3v12 M7 8l5-5 5 5 M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6'), 'Udostępnij'));
+      }
+      ul.append(head);
+    }
     const towns = tripTowns(t);
     const when = d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' +
       d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    const whenShort = 'godz. ' + d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
     const meta = `${fmtKm(t.km || 0)}${t.end ? ' · ' + fmtDur(activeMs(t)) : ''}${t.pausedMs > 60000 ? ' (bez przerw)' : ''}${t.source === 'gpx' ? ' · GPX' : ''}`;
     const where = t.processed ? (towns.length ? towns.join(', ') : 'poza miejscowościami') : 'rozpoznaję ulice…';
     const id = 'trip-' + t.id;
     const info = el(tripSel.on ? 'label' : 'span', tripSel.on ? { class: 'tinfo', for: id } : { class: 'tinfo' },
-      el('b', {}, when), el('span', { class: 'm' }, meta), el('span', { class: 'm' }, where));
+      el('b', {}, whenShort), el('span', { class: 'm' }, meta), el('span', { class: 'm' }, where));
     const li = el('li', {});
     if (tripSel.on) {
       const cb = el('input', { type: 'checkbox', id });
@@ -1116,6 +1132,218 @@ function renderTrips() {
     ul.append(li);
   }
 }
+/* ---------------- Udostępnianie tras z danego dnia ---------------- */
+const dayKey = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+function dayLabel(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const today = dayKey(Date.now()), yest = dayKey(Date.now() - 86400000);
+  const base = date.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return key === today ? `Dziś, ${base}` : key === yest ? `Wczoraj, ${base}` : base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+/** Podsumowanie dnia: trasy, km, czas jazdy, nowe ulice (pierwszy raz przejechane tego dnia). */
+function daySummary(key) {
+  const trips = state.trips.filter((t) => !t.recording && dayKey(t.start) === key).sort((a, b) => a.start - b.start);
+  const m = trips.reduce((x, t) => x + (t.km || 0), 0);
+  const ms = trips.reduce((x, t) => x + (t.end ? activeMs(t) : 0), 0);
+  const dayStart = Math.min(...trips.map((t) => t.start));
+  const seen = new Set();
+  for (const o of state.trips) {
+    if (o.recording || o.start >= dayStart) continue;
+    for (const [town, sts] of Object.entries(o.streets || {})) for (const s of Object.keys(sts)) seen.add(town + '|' + s);
+  }
+  const fresh = {};
+  for (const t of trips) for (const [town, sts] of Object.entries(t.streets || {})) {
+    if (town === NO_TOWN) continue;
+    for (const s of Object.keys(sts)) {
+      const k = town + '|' + s;
+      if (s === NO_STREET || seen.has(k)) continue;
+      seen.add(k);
+      fresh[town] = (fresh[town] || 0) + 1;
+    }
+  }
+  const newCount = Object.values(fresh).reduce((x, n) => x + n, 0);
+  const towns = [...new Set(trips.flatMap((t) => tripTowns(t)))];
+  return { key, trips, m, ms, fresh, newCount, towns };
+}
+
+function shareText(S) {
+  const parts = [`Moje Drogi · ${dayLabel(S.key)}`,
+    `${S.trips.length} ${plural(S.trips.length, 'trasa', 'trasy', 'tras')}, ${fmtKm(S.m)}${S.ms ? `, ${fmtDur(S.ms)} jazdy` : ''}.`];
+  if (S.newCount) {
+    const per = Object.entries(S.fresh).sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(', ');
+    parts.push(`Nowe ulice: ${S.newCount} (${per}).`);
+  }
+  if (S.towns.length) parts.push(`Miejscowości: ${S.towns.join(', ')}.`);
+  return parts.join('\n');
+}
+
+/** Plik GPX z trasami dnia: osobny ślad dla każdej trasy, osobny odcinek po każdej przerwie. */
+function buildGpx(S) {
+  const esc = (x) => String(x).replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
+  const trk = S.trips.map((t) => {
+    const segs = [];
+    let cur = [];
+    for (const p of t.points) {
+      if (p[3] && cur.length) { segs.push(cur); cur = []; }
+      cur.push(p);
+    }
+    if (cur.length) segs.push(cur);
+    const name = `Trasa ${new Date(t.start).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}`;
+    return `  <trk><name>${esc(name)}</name>\n` + segs.map((seg) => '    <trkseg>\n' + seg.map((p) =>
+      `      <trkpt lat="${p[0]}" lon="${p[1]}">${p[2] > 1e12 ? `<time>${new Date(p[2]).toISOString()}</time>` : ''}</trkpt>`).join('\n') + '\n    </trkseg>').join('\n') + '\n  </trk>';
+  }).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Moje Drogi" xmlns="http://www.topografix.com/GPX/1/1">\n  <metadata><name>${esc('Moje Drogi ' + S.key)}</name></metadata>\n${trk}\n</gpx>\n`;
+}
+
+// --- obraz 1080×1350: nagłówek z datą i liczbami, mapa z trasami, stopka ---
+const IMG_W = 1080, IMG_H = 1350, MAP_TOP = 250, MAP_H = 980;
+const projX = (lon, z) => ((lon + 180) / 360) * 256 * 2 ** z;
+const projY = (lat, z) => { const r = (lat * Math.PI) / 180; return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 256 * 2 ** z; };
+function loadTile(url) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const timer = setTimeout(() => res(null), 8000);
+    img.onload = () => { clearTimeout(timer); res(img); };
+    img.onerror = () => { clearTimeout(timer); res(null); };
+    img.src = url;
+  });
+}
+async function drawShareImage(canvas, S, withTiles = true) {
+  const ctx = canvas.getContext('2d');
+  try { await document.fonts?.ready; } catch {}
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, IMG_W, IMG_H);
+  // nagłówek
+  ctx.fillStyle = '#15803D';
+  ctx.font = '700 34px "Space Grotesk", Inter, sans-serif';
+  ctx.fillText('Moje Drogi', 60, 82);
+  ctx.fillStyle = '#111827';
+  ctx.font = '700 52px "Space Grotesk", Inter, sans-serif';
+  ctx.fillText(dayLabel(S.key), 60, 150, IMG_W - 120);
+  ctx.fillStyle = '#4B5563';
+  ctx.font = '500 34px Inter, sans-serif';
+  const line = `${fmtKm(S.m)} · ${S.trips.length} ${plural(S.trips.length, 'trasa', 'trasy', 'tras')}${S.ms ? ' · ' + fmtDur(S.ms) + ' jazdy' : ''}${S.newCount ? ` · ${S.newCount} ${plural(S.newCount, 'nowa ulica', 'nowe ulice', 'nowych ulic')}` : ''}`;
+  ctx.fillText(line, 60, 210, IMG_W - 120);
+
+  // mapa: dobór przybliżenia tak, żeby wszystkie trasy się zmieściły
+  const pts = S.trips.flatMap((t) => t.points);
+  let z = 17;
+  for (; z > 3; z--) {
+    const xs = pts.map((p) => projX(p[1], z)), ys = pts.map((p) => projY(p[0], z));
+    if (Math.max(...xs) - Math.min(...xs) <= IMG_W - 140 && Math.max(...ys) - Math.min(...ys) <= MAP_H - 140) break;
+  }
+  const xs = pts.map((p) => projX(p[1], z)), ys = pts.map((p) => projY(p[0], z));
+  const ox = (Math.min(...xs) + Math.max(...xs)) / 2 - IMG_W / 2;
+  const oy = (Math.min(...ys) + Math.max(...ys)) / 2 - MAP_H / 2;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, MAP_TOP, IMG_W, MAP_H);
+  ctx.clip();
+  ctx.fillStyle = '#E9ECE6';
+  ctx.fillRect(0, MAP_TOP, IMG_W, MAP_H);
+  if (withTiles) {
+    const jobs = [];
+    for (let tx = Math.floor(ox / 256); tx <= Math.floor((ox + IMG_W) / 256); tx++) {
+      for (let ty = Math.floor(oy / 256); ty <= Math.floor((oy + MAP_H) / 256); ty++) {
+        jobs.push(loadTile(`https://tile.openstreetmap.org/${z}/${tx}/${ty}.png`).then((img) => img && ctx.drawImage(img, tx * 256 - ox, ty * 256 - oy + MAP_TOP)));
+      }
+    }
+    await Promise.all(jobs);
+  }
+  // trasy: zielone, z białą obwódką dla czytelności na mapie
+  const toXY = (p) => [projX(p[1], z) - ox, projY(p[0], z) - oy + MAP_TOP];
+  for (const [color, width] of [['#FFFFFF', 16], ['#16A34A', 9]]) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const t of S.trips) for (const seg of segmentsOf(t.points)) {
+      ctx.beginPath();
+      seg.forEach((p, i) => { const [x, y] = toXY(p); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+      ctx.stroke();
+    }
+  }
+  // początek i koniec dnia
+  const first = S.trips[0].points[0], lastT = S.trips[S.trips.length - 1], last = lastT.points[lastT.points.length - 1];
+  for (const [p, fill] of [[first, '#FFFFFF'], [last, '#111827']]) {
+    const [x, y] = toXY(p);
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2);
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.lineWidth = 6; ctx.strokeStyle = '#16A34A'; ctx.stroke();
+  }
+  ctx.restore();
+  // stopka
+  ctx.fillStyle = '#4B5563';
+  ctx.font = '500 28px Inter, sans-serif';
+  const towns = S.towns.length ? S.towns.slice(0, 4).join(', ') + (S.towns.length > 4 ? ` i ${S.towns.length - 4} więcej` : '') : '';
+  ctx.fillText(towns, 60, MAP_TOP + MAP_H + 52, IMG_W - 120);
+  ctx.font = '400 22px Inter, sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText('Mapa © OpenStreetMap', IMG_W - 30, IMG_H - 24);
+  ctx.textAlign = 'left';
+}
+function canvasBlob(canvas) {
+  return new Promise((res, rej) => {
+    try { canvas.toBlob((b) => (b ? res(b) : rej(new Error('pusty obraz'))), 'image/png'); } catch (e) { rej(e); }
+  });
+}
+
+let shareCur = null;
+async function openShare(key) {
+  const S = daySummary(key);
+  if (!S.trips.length) return;
+  shareCur = { S, blob: null };
+  $('#share-title').textContent = `Udostępnij: ${dayLabel(key)}`;
+  $('#share-text').textContent = shareText(S);
+  $('#share-hint').textContent = 'Przygotowuję obraz…';
+  $('#share-go').disabled = true;
+  $('#share-modal').hidden = false;
+  $('#share-close').focus();
+  const canvas = $('#share-canvas');
+  await drawShareImage(canvas, S, true);
+  try {
+    shareCur.blob = await canvasBlob(canvas);
+  } catch {
+    // gdyby kafelki mapy zablokowały zapis obrazu: obraz bez podkładu mapy
+    await drawShareImage(canvas, S, false);
+    try { shareCur.blob = await canvasBlob(canvas); } catch { shareCur.blob = null; }
+  }
+  $('#share-go').disabled = false;
+  $('#share-hint').textContent = shareCur.blob ? '' : 'Nie udało się przygotować obrazu. Możesz udostępnić sam opis.';
+}
+function closeShare() { $('#share-modal').hidden = true; shareCur = null; }
+
+function downloadBlob(blob, name) {
+  const a = el('a', { href: URL.createObjectURL(blob), download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+async function doShare() {
+  if (!shareCur) return;
+  const { S, blob } = shareCur;
+  const text = shareText(S);
+  const files = [];
+  if (blob) files.push(new File([blob], `moje-drogi-${S.key}.png`, { type: 'image/png' }));
+  if ($('#share-gpx').checked) files.push(new File([buildGpx(S)], `moje-drogi-${S.key}.gpx`, { type: 'application/gpx+xml' }));
+  try {
+    if (navigator.share && (!files.length || navigator.canShare?.({ files }))) {
+      await navigator.share({ title: `Moje Drogi · ${dayLabel(S.key)}`, text, files });
+      closeShare();
+      setStatus('Udostępniono trasy z dnia.');
+      return;
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') return; // anulowano w menu udostępniania
+  }
+  // bez menu udostępniania (np. komputer): zapisz pliki i skopiuj opis
+  for (const f of files) downloadBlob(f, f.name);
+  try { await navigator.clipboard.writeText(text); } catch {}
+  $('#share-hint').textContent = 'Ta przeglądarka nie ma menu udostępniania. Zapisałem pliki, a opis skopiowałem do schowka.';
+}
+
 function svgIcon(d) {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
@@ -1579,6 +1807,11 @@ document.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', ()
 $('#btn-back').addEventListener('click', () => showView('view-towns'));
 $('#btn-trips').addEventListener('click', () => showView('view-trips'));
 $('#btn-theme').addEventListener('click', cycleMapTheme);
+$('#share-close').addEventListener('click', closeShare);
+$('#share-go').addEventListener('click', doShare);
+$('#share-save').addEventListener('click', () => { if (shareCur?.blob) downloadBlob(shareCur.blob, `moje-drogi-${shareCur.S.key}.png`); });
+$('#share-modal').addEventListener('click', (e) => { if (e.target.id === 'share-modal') closeShare(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#share-modal').hidden) closeShare(); });
 $('#btn-notify').addEventListener('click', toggleNotify);
 $('#ns-close').addEventListener('click', () => { $('#ns-card').hidden = true; });
 renderNotifySwitch();

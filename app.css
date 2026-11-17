@@ -329,6 +329,32 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 .ns-streets { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 .ns-chip { padding: 3px 8px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--fg); font-size: 12px; }
 
+/* ---------- Udostępnianie dnia ---------- */
+.list.trips li.day-head { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 16px 0 8px; }
+.list.trips li.day-head .n { flex: 1 1 60%; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--fg); }
+.list.trips li.day-head .m { order: 3; flex-basis: 100%; }
+.share-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--accent); font-weight: 600; cursor: pointer;
+}
+.share-btn svg { width: 18px; height: 18px; }
+.modal {
+  position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; justify-content: center;
+  padding: env(safe-area-inset-top, 0px) max(0px, env(safe-area-inset-right, 0px)) 0 max(0px, env(safe-area-inset-left, 0px));
+}
+.modal[hidden] { display: none; }
+.modal-box {
+  width: 100%; max-width: 520px; max-height: 92vh; overflow-y: auto; background: var(--surface); border-radius: 22px 22px 0 0;
+  padding: 16px max(18px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 18px) max(18px, env(safe-area-inset-left, 0px));
+  display: flex; flex-direction: column; gap: 12px;
+}
+.share-canvas { width: 100%; max-width: 360px; align-self: center; height: auto; aspect-ratio: 4 / 5; border-radius: 12px; border: 1px solid var(--line); background: #fff; }
+.share-text { margin: 0; white-space: pre-line; font-size: 14px; color: var(--fg); }
+.check { display: flex; gap: 10px; align-items: center; font-size: 14px; min-height: 44px; }
+.check input { width: 22px; height: 22px; accent-color: var(--accent); }
+.share-go { background: var(--accent); color: var(--ink-btn-fg); flex: 1 1 140px; }
+.share-go:disabled { opacity: .5; }
+
 /* przełącznik powiadomień */
 .tool-switch { justify-content: space-between; gap: 12px; }
 .sw-ui { width: 44px; height: 26px; border-radius: 13px; background: var(--track); position: relative; flex-shrink: 0; transition: background .15s; }

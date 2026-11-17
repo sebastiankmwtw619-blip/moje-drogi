@@ -257,6 +257,25 @@
   </section>
 </main>
 
+<div id="share-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="share-title">
+  <div class="modal-box">
+    <div class="ns-head">
+      <h2 id="share-title">Udostępnij trasy z dnia</h2>
+      <button id="share-close" class="q-clear" type="button" aria-label="Zamknij">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <canvas id="share-canvas" class="share-canvas" width="1080" height="1350" role="img" aria-label="Podgląd obrazu: mapa z trasami dnia i podsumowanie"></canvas>
+    <p id="share-text" class="share-text"></p>
+    <label class="check"><input type="checkbox" id="share-gpx"> Dołącz plik GPX (do otwarcia w innych aplikacjach map)</label>
+    <div class="row-btns">
+      <button id="share-go" class="del-btn share-go" type="button">Udostępnij</button>
+      <button id="share-save" class="ghost" type="button">Zapisz obraz</button>
+    </div>
+    <p id="share-hint" class="fine" role="status"></p>
+  </div>
+</div>
+
 <nav class="tabbar" aria-label="Główne">
   <button type="button" data-view="view-map" class="on">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l-6 2v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>Mapa</button>
