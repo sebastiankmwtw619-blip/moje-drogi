@@ -334,6 +334,71 @@ async function overpass(q) {
   throw lastErr;
 }
 
+/* ---------------- Osiedla: przypisanie każdej ulicy do osiedla ---------------- */
+// Najpierw granica osiedla (jeśli jest w OpenStreetMap), inaczej najbliższy punkt osiedla do 2,5 km.
+const DISTRICT_RANK = { suburb: 0, city_district: 1, borough: 1, quarter: 2 };
+function ringSegments(e) {
+  const segs = [];
+  const add = (g) => { for (let i = 1; i < g.length; i++) segs.push([g[i - 1].lat, g[i - 1].lon, g[i].lat, g[i].lon]); };
+  if (e.type === 'way' && e.geometry) add(e.geometry);
+  if (e.type === 'relation') for (const m of e.members || []) if (m.type === 'way' && m.geometry && m.role !== 'label' && m.role !== 'admin_centre') add(m.geometry);
+  return segs;
+}
+// reguła parzystości: działa na pierścieniach złożonych z wielu odcinków i uwzględnia „dziury”
+function insideSegments(lat, lon, segs) {
+  let inside = false;
+  for (const [y1, x1, y2, x2] of segs) {
+    if ((y1 > lat) !== (y2 > lat) && lon < x1 + ((lat - y1) * (x2 - x1)) / (y2 - y1)) inside = !inside;
+  }
+  return inside;
+}
+function assignDistricts(els, ways) {
+  const polys = els
+    .filter((e) => (e.type === 'relation' || e.type === 'way') && !e.tags?.highway && e.tags?.name)
+    .map((e) => {
+      const segs = ringSegments(e);
+      const lats = segs.flatMap((x) => [x[0], x[2]]), lons = segs.flatMap((x) => [x[1], x[3]]);
+      const rank = e.tags.place ? DISTRICT_RANK[e.tags.place] ?? 3 : 1;
+      return { name: e.tags.name, rank, segs, box: [Math.min(...lats), Math.max(...lats), Math.min(...lons), Math.max(...lons)] };
+    })
+    .filter((p) => p.segs.length >= 3)
+    .sort((a, b) => a.rank - b.rank);
+  const nodes = els.filter((e) => e.type === 'node' && e.tags?.name && e.lat != null);
+  if (!polys.length && !nodes.length) return null;
+  const out = {};
+  for (const w of ways) {
+    const c = w.center;
+    let d = null;
+    if (c) {
+      const p = polys.find((p) => c.lat >= p.box[0] && c.lat <= p.box[1] && c.lon >= p.box[2] && c.lon <= p.box[3] && insideSegments(c.lat, c.lon, p.segs));
+      if (p) d = p.name;
+      else {
+        let best = 2500;
+        for (const n of nodes) { const m = dist([c.lat, c.lon], [n.lat, n.lon]); if (m < best) { best = m; d = n.tags.name; } }
+      }
+    }
+    (out[d || NO_DISTRICT] ??= new Set()).add(w.tags.name);
+  }
+  const res = {};
+  for (const [d, set] of Object.entries(out)) res[d] = [...set].sort((a, b) => a.localeCompare(b, 'pl'));
+  return res;
+}
+
+/** Procent przejechanych ulic w każdym osiedlu. */
+function districtProgress(T, meta) {
+  if (!T || !meta?.districts) return null;
+  const streetDs = {};
+  for (const [d, names] of Object.entries(meta.districts)) for (const s of names) (streetDs[s] ??= new Set()).add(d);
+  const seenIn = {};
+  for (const D of Object.values(T.districts)) for (const s of Object.keys(D.streets)) (seenIn[s] ??= new Set()).add(D.name);
+  return Object.entries(meta.districts).map(([d, names]) => {
+    // ulica tylko w jednym osiedlu liczy się zawsze; ulica przez kilka osiedli — tam, gdzie nią jechałeś
+    const visited = names.filter((s) => T.streets[s] && (streetDs[s].size === 1 || seenIn[s]?.has(d)));
+    const vs = new Set(visited);
+    return { name: d, total: names.length, hit: visited.length, pct: Math.round((visited.length / names.length) * 100), visited, missing: names.filter((s) => !vs.has(s)) };
+  }).sort((a, b) => (a.name === NO_DISTRICT) - (b.name === NO_DISTRICT) || b.pct - a.pct || a.name.localeCompare(b.name, 'pl'));
+}
+
 async function countStreets(name) {
   const T = state.agg[name];
   if (!T?.pt) throw new Error('brak punktu');
@@ -349,11 +414,19 @@ async function countStreets(name) {
     list.filter((e) => e.tags.name.toLowerCase() === lc).sort(byLevel)[0] ||
     list.filter((e) => e.tags.name.toLowerCase().includes(lc)).sort(byLevel)[0] ||
     list.sort(byLevel)[0];
-  const ways = await overpass(
-    `[out:json][timeout:120];area(id:${area.id})->.t;way(area.t)[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|road)$"][name];out tags;`
+  // ulice (ze środkiem odcinka) + osiedla: granice (out geom) i punkty
+  const res = await overpass(
+    `[out:json][timeout:180];area(id:${area.id})->.t;` +
+    `way(area.t)[highway~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|road)$"][name];out tags center;` +
+    `(relation(area.t)[boundary=administrative][admin_level~"^(9|10|11)$"][name];` +
+    `relation(area.t)[place~"^(suburb|quarter|city_district|borough)$"][name];` +
+    `way(area.t)[place~"^(suburb|quarter|city_district|borough)$"][name];);out geom;` +
+    `node(area.t)[place~"^(suburb|quarter|city_district|borough)$"][name];out;`
   );
-  const names = [...new Set((ways.elements || []).map((w) => w.tags.name))].sort((a, b) => a.localeCompare(b, 'pl'));
-  const meta = { name, total: names.length, names, areaName: area.tags.name, checked: Date.now() };
+  const els = res.elements || [];
+  const ways = els.filter((e) => e.type === 'way' && e.tags?.highway && e.tags?.name);
+  const names = [...new Set(ways.map((w) => w.tags.name))].sort((a, b) => a.localeCompare(b, 'pl'));
+  const meta = { name, total: names.length, names, areaName: area.tags.name, checked: Date.now(), districts: assignDistricts(els, ways) };
   await dbPut('towns', meta);
   state.townMeta[name] = meta;
 }
@@ -505,13 +578,34 @@ function renderTown() {
   $('#d-ring').setAttribute('aria-label', pr ? `Przejechane ${pct}% ulic` : 'Postęp nieznany — policz wszystkie ulice');
   $('#btn-count').textContent = meta ? 'Policz ulice ponownie' : 'Policz wszystkie ulice';
   $('#d-area').textContent = meta
-    ? `Ulice liczone w granicach: ${meta.areaName} (OpenStreetMap, ${fmtDate(meta.checked)}).`
+    ? `Ulice liczone w granicach: ${meta.areaName} (OpenStreetMap, ${fmtDate(meta.checked)}).` +
+      (meta.districts === undefined ? ' Policz ponownie, żeby zobaczyć procent dla każdego osiedla.'
+        : meta.districts === null ? ' OpenStreetMap nie dzieli tej miejscowości na osiedla.' : '')
     : 'Kliknij „Policz wszystkie ulice”, żeby zobaczyć, jaki procent miejscowości już przejechałeś.';
 
   $('#tab-streets').setAttribute('aria-selected', String(state.detailTab === 'streets'));
   $('#tab-trips').setAttribute('aria-selected', String(state.detailTab === 'trips'));
 
-  if (state.detailTab === 'streets') {
+  const dp = districtProgress(T, meta);
+  if (state.detailTab === 'streets' && dp) {
+    // tryb z procentami osiedli: każde osiedle z paskiem, przejechane i jeszcze nie
+    const inAny = new Set(Object.values(meta.districts).flat());
+    for (const D of dp) {
+      list.append(districtHead(D));
+      for (const s of D.visited) {
+        const v = T.streets[s];
+        list.append(el('li', {}, el('span', { class: 'd' }), el('span', { class: 'n' }, s), el('span', { class: 'm' }, `${v.n}× · ${fmtKm(v.m)}`)));
+      }
+      for (const s of D.missing) {
+        list.append(el('li', {}, el('span', { class: 'd no' }), el('span', { class: 'n' }, s), el('span', { class: 'm' }, 'jeszcze nie')));
+      }
+    }
+    const other = Object.entries(T.streets).filter(([s]) => !inAny.has(s)).sort((a, b) => b[1].m - a[1].m);
+    if (other.length) list.append(groupHead('Inne przejechane drogi', other.length, other.reduce((x, [, v]) => x + v.m, 0)));
+    for (const [s, v] of other) {
+      list.append(el('li', {}, el('span', { class: 'd' }), el('span', { class: 'n' }, s), el('span', { class: 'm' }, `${v.n}× · ${fmtKm(v.m)}`)));
+    }
+  } else if (state.detailTab === 'streets') {
     const districts = districtsSorted(T);
     const showHeads = !(districts.length === 1 && districts[0].name === NO_DISTRICT);
     for (const D of districts) {
@@ -555,6 +649,17 @@ function renderTown() {
 function districtsSorted(T) {
   return Object.values(T.districts).sort((a, b) =>
     (a.name === NO_DISTRICT) - (b.name === NO_DISTRICT) || b.m - a.m);
+}
+function districtHead(D) {
+  const bar = el('i');
+  bar.style.width = D.pct + '%';
+  if (D.pct >= 100) bar.className = 'full';
+  return el('li', { class: 'group district' },
+    el('span', { class: 'dh-top' },
+      el('span', { class: 'n' }, D.name),
+      el('span', { class: 'dh-pct' }, D.pct + '%')),
+    el('span', { class: 'bar' }, bar),
+    el('span', { class: 'm' }, `${D.hit} z ${D.total} ${plural(D.total, 'ulicy', 'ulic', 'ulic')}`));
 }
 function groupHead(name, n, m) {
   return el('li', { class: 'group' },
@@ -607,7 +712,8 @@ function renderStreets() {
     const showHeads = !(ds.length === 1 && ds[0] === NO_DISTRICT);
     for (const d of ds) {
       const items = dm.get(d).sort((a, b) => a.street.localeCompare(b.street, 'pl'));
-      if (showHeads) ul.append(groupHead(d, items.length, items.reduce((x, r) => x + r.m, 0)));
+      const dpd = districtProgress(state.agg[town], state.townMeta[town])?.find((x) => x.name === d);
+      if (showHeads) ul.append(dpd ? districtHead(dpd) : groupHead(d, items.length, items.reduce((x, r) => x + r.m, 0)));
       for (const r of items) {
         ul.append(el('li', {}, el('span', { class: 'd' }), el('span', { class: 'n' }, r.street),
           el('span', { class: 'm' }, `${r.n}× · ${fmtDate(r.last)}`)));
