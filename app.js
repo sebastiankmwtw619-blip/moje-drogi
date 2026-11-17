@@ -1189,6 +1189,34 @@ function showTip(p, i, quiet) {
   }
 }
 
+/* ---------------- Tryb mapy: auto / ciemna / jasna ---------------- */
+const MAP_THEMES = ['auto', 'dark', 'light'];
+const THEME_NAMES = { auto: 'automatyczny (jak w telefonie)', dark: 'ciemny', light: 'jasny' };
+const THEME_TAGS = { auto: 'Auto', dark: 'Ciemna', light: 'Jasna' };
+const THEME_ICONS = {
+  auto: '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/>',
+  dark: '<path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>',
+  light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+};
+const systemDark = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+let mapTheme = 'auto';
+try { mapTheme = MAP_THEMES.includes(localStorage.getItem('mapTheme')) ? localStorage.getItem('mapTheme') : 'auto'; } catch {}
+
+function applyMapTheme() {
+  const dark = mapTheme === 'dark' || (mapTheme === 'auto' && !!systemDark?.matches);
+  document.body.classList.toggle('map-dark', dark);
+  $('#theme-icon').innerHTML = THEME_ICONS[mapTheme];
+  $('#theme-tag').textContent = THEME_TAGS[mapTheme];
+  $('#btn-theme').setAttribute('aria-label', `Tryb mapy: ${THEME_NAMES[mapTheme]}. Stuknij, żeby zmienić.`);
+}
+function cycleMapTheme() {
+  mapTheme = MAP_THEMES[(MAP_THEMES.indexOf(mapTheme) + 1) % MAP_THEMES.length];
+  try { localStorage.setItem('mapTheme', mapTheme); } catch {}
+  applyMapTheme();
+  setStatus(`Mapa: tryb ${THEME_NAMES[mapTheme]}.`);
+}
+systemDark?.addEventListener?.('change', applyMapTheme);
+
 function showView(id) {
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === id));
   // ekrany tras i szczegółów miejscowości należą do zakładki Miejscowości
@@ -1441,6 +1469,8 @@ document.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', ()
 }));
 $('#btn-back').addEventListener('click', () => showView('view-towns'));
 $('#btn-trips').addEventListener('click', () => showView('view-trips'));
+$('#btn-theme').addEventListener('click', cycleMapTheme);
+applyMapTheme();
 $('#per-week').addEventListener('click', () => { statState.mode = 'week'; statState.sel = null; renderStats(); });
 $('#per-month').addEventListener('click', () => { statState.mode = 'month'; statState.sel = null; renderStats(); });
 window.addEventListener('resize', () => { if ($('#view-stats').classList.contains('active')) renderStats(); });

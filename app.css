@@ -99,6 +99,20 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 }
 .fab svg { width: 22px; height: 22px; }
 .fab.on { background: var(--accent); color: #fff; }
+.fab.theme { position: relative; }
+.fab-tag {
+  position: absolute; bottom: 3px; left: 0; right: 0; text-align: center;
+  font: 700 9px var(--font-ui); letter-spacing: .02em; color: var(--muted);
+}
+.fab.theme svg { margin-top: -8px; }
+
+/* ---------- Ciemna mapa: te same mapy OpenStreetMap z odwróconymi kolorami ---------- */
+body.map-dark #map, body.map-dark .d-map { background: #1B1F24; }
+body.map-dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.55); }
+body.map-dark .leaflet-control-attribution { background: rgba(26,29,36,.8); color: #A5ADBA; }
+body.map-dark .leaflet-control-attribution a { color: #7AA2FF; }
+body.map-dark .leaflet-tooltip.dlabel { color: #F3F4F6; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 3px #000; }
+body.map-dark .leaflet-bar a { background: #1A1D24; color: #F3F4F6; border-color: #2A2F3A; }
 
 .sheet {
   background: var(--surface); border-radius: 22px 22px 0 0; margin-top: -18px; position: relative; z-index: 600;
