@@ -89,6 +89,7 @@
 
       <h2>Dane</h2>
       <div class="tools">
+        <button id="btn-trips" class="tool" type="button">Nagrane trasy</button>
         <label class="tool">Importuj trasy GPX<input id="in-gpx" type="file" accept=".gpx,application/gpx+xml" multiple></label>
         <button id="btn-export" class="tool" type="button">Zapisz kopię zapasową</button>
         <label class="tool">Wczytaj kopię zapasową<input id="in-backup" type="file" accept=".json,application/json"></label>
@@ -115,6 +116,33 @@
       <p id="streets-empty" class="empty">Tu zbiorą się wszystkie ulice, którymi przejedziesz, pogrupowane według miejscowości i osiedli.</p>
       <p id="streets-nomatch" class="empty" hidden>Nie znalazłem takiej ulicy wśród przejechanych.</p>
       <div id="all-streets" class="all-streets"></div>
+    </div>
+  </section>
+
+  <!-- NAGRANE TRASY (z ekranu Miejscowości › Dane) -->
+  <section id="view-trips" class="view" aria-label="Nagrane trasy">
+    <div class="page">
+      <div class="town-head">
+        <button id="btn-trips-back" class="icon-btn" type="button" aria-label="Wróć do miejscowości">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <div>
+          <h1>Nagrane trasy</h1>
+          <span class="sub" id="tr-sub"></span>
+        </div>
+      </div>
+      <div class="row-btns" id="tr-tools">
+        <button id="btn-select" class="ghost" type="button" aria-pressed="false">Zaznacz</button>
+        <button id="btn-del-all" class="ghost danger" type="button">Usuń wszystkie</button>
+      </div>
+      <div id="tr-selbar" class="selbar" hidden>
+        <span id="tr-selcount">Zaznaczono 0</span>
+        <button id="btn-sel-all" class="link" type="button">Zaznacz wszystkie</button>
+        <button id="btn-del-sel" class="del-btn" type="button" disabled>Usuń zaznaczone</button>
+      </div>
+      <p id="tr-empty" class="empty" hidden>Nie masz jeszcze nagranych tras.</p>
+      <ul id="tr-list" class="card list trips"></ul>
+      <p class="fine">Usunięcie trasy usuwa ją z mapy i ze statystyk ulic, osiedli i miejscowości. Tego nie da się cofnąć, chyba że masz kopię zapasową.</p>
     </div>
   </section>
 

@@ -291,6 +291,7 @@ async function processTrip(t) {
   t.v = TRIP_V;
   t.km = trackLen(pts);
   t.processed = true;
+  if (!state.trips.includes(t)) return; // trasę usunięto w trakcie rozpoznawania — nie zapisuj jej z powrotem
   await dbPut('trips', t);
 }
 
@@ -602,7 +603,7 @@ function townsSorted() {
 }
 
 /* ---------------- Widoki ---------------- */
-function renderAll() { renderSheet(); renderTowns(); renderTown(); renderStreets(); }
+function renderAll() { renderSheet(); renderTowns(); renderTown(); renderStreets(); renderTrips(); }
 
 function sheetTown() {
   if (state.focus) return state.agg[state.focus.name] || null;
@@ -865,9 +866,96 @@ function exportCsv() {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
+/* ---------------- Nagrane trasy: podgląd i usuwanie ---------------- */
+const tripSel = { on: false, ids: new Set() };
+let highlight = null;
+
+function tripTowns(t) {
+  return Object.keys(t.streets || {}).filter((x) => x !== NO_TOWN);
+}
+
+async function deleteTrips(ids) {
+  const set = new Set(ids);
+  for (const id of set) await dbDel('trips', id);
+  state.trips = state.trips.filter((t) => !set.has(t.id));
+  tripSel.ids.clear();
+  if (highlight && set.has(highlight.tripId)) { highlight.remove(); highlight = null; }
+  rebuild();
+  setStatus(`Usunięto ${set.size} ${plural(set.size, 'trasę', 'trasy', 'tras')}.`);
+}
+
+function showTripOnMap(t) {
+  if (highlight) highlight.remove();
+  highlight = L.polyline(t.points.map((p) => [p[0], p[1]]), { color: '#1D4ED8', weight: 7, opacity: 0.9 }).addTo(map);
+  highlight.tripId = t.id;
+  setFollow(false);
+  showView('view-map');
+  map.fitBounds(highlight.getBounds(), { padding: [30, 30], maxZoom: 16 });
+  setStatus(`Pokazuję trasę z ${fmtDate(t.start)} (niebieska linia).`);
+}
+
+function renderTrips() {
+  const trips = state.trips.filter((t) => !t.recording).sort((a, b) => b.start - a.start);
+  const total = trips.reduce((x, t) => x + (t.km || 0), 0);
+  for (const id of [...tripSel.ids]) if (!trips.some((t) => t.id === id)) tripSel.ids.delete(id);
+  $('#btn-trips').textContent = `Nagrane trasy (${trips.length})`;
+  $('#tr-sub').textContent = `${trips.length} ${plural(trips.length, 'trasa', 'trasy', 'tras')} · ${fmtKm(total)}`;
+  $('#tr-empty').hidden = trips.length > 0;
+  $('#tr-tools').hidden = trips.length === 0;
+  if (!trips.length) tripSel.on = false;
+  $('#btn-select').setAttribute('aria-pressed', String(tripSel.on));
+  $('#btn-select').textContent = tripSel.on ? 'Gotowe' : 'Zaznacz';
+  $('#tr-selbar').hidden = !tripSel.on;
+  $('#tr-selcount').textContent = `Zaznaczono ${tripSel.ids.size}`;
+  $('#btn-del-sel').disabled = tripSel.ids.size === 0;
+  $('#btn-del-sel').textContent = tripSel.ids.size ? `Usuń zaznaczone (${tripSel.ids.size})` : 'Usuń zaznaczone';
+
+  const ul = $('#tr-list');
+  ul.hidden = trips.length === 0;
+  ul.replaceChildren();
+  for (const t of trips) {
+    const d = new Date(t.start);
+    const towns = tripTowns(t);
+    const when = d.toLocaleDateString('pl-PL', { day: 'numeric', month: 'short', year: 'numeric' }) + ', ' +
+      d.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    const meta = `${fmtKm(t.km || 0)}${t.end ? ' · ' + fmtDur(t.end - t.start) : ''}${t.source === 'gpx' ? ' · GPX' : ''}`;
+    const where = t.processed ? (towns.length ? towns.join(', ') : 'poza miejscowościami') : 'rozpoznaję ulice…';
+    const id = 'trip-' + t.id;
+    const info = el(tripSel.on ? 'label' : 'span', tripSel.on ? { class: 'tinfo', for: id } : { class: 'tinfo' },
+      el('b', {}, when), el('span', { class: 'm' }, meta), el('span', { class: 'm' }, where));
+    const li = el('li', {});
+    if (tripSel.on) {
+      const cb = el('input', { type: 'checkbox', id });
+      cb.checked = tripSel.ids.has(t.id);
+      cb.addEventListener('change', () => { if (cb.checked) tripSel.ids.add(t.id); else tripSel.ids.delete(t.id); renderTrips(); });
+      li.append(cb, info);
+    } else {
+      li.append(info,
+        el('button', { class: 'tbtn', type: 'button', 'aria-label': `Pokaż na mapie trasę z ${when}`, onclick: () => showTripOnMap(t) },
+          svgIcon('M9 4l-6 2v14l6-2 6 2 6-2V4l-6 2-6-2z M9 4v14 M15 6v14')),
+        el('button', {
+          class: 'tbtn del', type: 'button', 'aria-label': `Usuń trasę z ${when}`,
+          onclick: () => { if (confirm(`Usunąć trasę z ${when} (${fmtKm(t.km || 0)})?`)) deleteTrips([t.id]); },
+        }, svgIcon('M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3')));
+    }
+    ul.append(li);
+  }
+}
+function svgIcon(d) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(ns, 'path');
+  path.setAttribute('d', d);
+  svg.append(path);
+  return svg;
+}
+
 function showView(id) {
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === id));
-  document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.view === id));
+  const tab = id === 'view-trips' ? 'view-towns' : id; // ekran tras należy do zakładki Miejscowości
+  document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.view === tab));
   if (id === 'view-map') setTimeout(() => map.invalidateSize(), 0);
   if (id === 'view-town') setTimeout(fitDistrictMap, 0);
 }
@@ -1103,6 +1191,24 @@ document.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', ()
   renderTowns();
 }));
 $('#btn-back').addEventListener('click', () => showView('view-towns'));
+$('#btn-trips').addEventListener('click', () => showView('view-trips'));
+$('#btn-trips-back').addEventListener('click', () => { tripSel.on = false; tripSel.ids.clear(); renderTrips(); showView('view-towns'); });
+$('#btn-select').addEventListener('click', () => { tripSel.on = !tripSel.on; tripSel.ids.clear(); renderTrips(); });
+$('#btn-sel-all').addEventListener('click', () => {
+  for (const t of state.trips) if (!t.recording) tripSel.ids.add(t.id);
+  renderTrips();
+});
+$('#btn-del-sel').addEventListener('click', () => {
+  const n = tripSel.ids.size;
+  if (n && confirm(`Usunąć ${n} ${plural(n, 'zaznaczoną trasę', 'zaznaczone trasy', 'zaznaczonych tras')}? Tego nie da się cofnąć.`)) {
+    tripSel.on = false;
+    deleteTrips([...tripSel.ids]);
+  }
+});
+$('#btn-del-all').addEventListener('click', () => {
+  const ids = state.trips.filter((t) => !t.recording).map((t) => t.id);
+  if (ids.length && confirm(`Usunąć wszystkie trasy (${ids.length})? Znikną z mapy i ze statystyk. Tego nie da się cofnąć.`)) deleteTrips(ids);
+});
 $('#tab-streets').addEventListener('click', () => { state.detailTab = 'streets'; renderTown(); });
 $('#tab-trips').addEventListener('click', () => { state.detailTab = 'trips'; renderTown(); });
 $('#btn-show').addEventListener('click', () => fitTown(state.selected));

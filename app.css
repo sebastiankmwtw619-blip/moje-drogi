@@ -244,3 +244,27 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 }
 .leaflet-tooltip.dlabel::before { display: none; }
 .dpop b { display: block; font-size: 14px; }
+
+/* ---------- Nagrane trasy ---------- */
+.ghost.danger { color: var(--danger); }
+.ghost[aria-pressed="true"] { background: var(--ink-btn); color: var(--ink-btn-fg); border-color: var(--ink-btn); }
+.selbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px;
+  background: var(--surface); border-radius: 14px; border: 1px solid var(--line);
+}
+.selbar span { flex: 1; font-weight: 600; }
+.del-btn {
+  min-height: 44px; padding: 0 16px; border: 0; border-radius: 12px; background: var(--danger); color: #fff;
+  font-weight: 600; cursor: pointer;
+}
+.del-btn:disabled { opacity: .45; cursor: default; }
+.list.trips li { gap: 10px; }
+.list.trips input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--accent); flex-shrink: 0; }
+.list.trips .tinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.list.trips .tinfo b { font-weight: 600; }
+.list.trips .tbtn {
+  min-width: 44px; min-height: 44px; border: 0; background: none; border-radius: 10px; cursor: pointer;
+  display: grid; place-items: center; color: var(--muted);
+}
+.list.trips .tbtn svg { width: 20px; height: 20px; }
+.list.trips .tbtn.del { color: var(--danger); }
