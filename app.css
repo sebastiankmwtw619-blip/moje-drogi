@@ -7,9 +7,9 @@
   --line: #E5E7EB;
   --track: #E5E7EB;
   --accent: #1D4ED8;
-  --visited: #2563EB;
+  --visited: #16A34A;
   --now: #EA580C;
-  --done: #0F766E;
+  --done: #166534;
   --ink-btn: #111827;
   --ink-btn-fg: #FFFFFF;
   --danger: #B91C1C;
@@ -20,8 +20,8 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #0F1115; --surface: #1A1D24; --fg: #F3F4F6; --muted: #A5ADBA;
-    --line: #2A2F3A; --track: #2A2F3A; --accent: #7AA2FF; --visited: #4F86FF;
-    --done: #2DD4BF; --ink-btn: #F3F4F6; --ink-btn-fg: #0F1115; --danger: #F87171;
+    --line: #2A2F3A; --track: #2A2F3A; --accent: #7AA2FF; --visited: #4ADE80;
+    --done: #22C55E; --ink-btn: #F3F4F6; --ink-btn-fg: #0F1115; --danger: #F87171;
     color-scheme: dark;
   }
 }
@@ -81,7 +81,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 .results li > button:hover, .results li > button:focus-visible { background: var(--bg); }
 .results .r-name { font-weight: 600; display: block; }
 .results .r-sub { font-size: 12px; color: var(--muted); display: block; }
-.results .r-tag { font-size: 12px; font-weight: 600; color: var(--visited); white-space: nowrap; }
+.results .r-tag { font-size: 12px; font-weight: 600; color: var(--done); white-space: nowrap; }
 .results .r-info { padding: 10px 12px; font-size: 13px; color: var(--muted); }
 .chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .chip {
@@ -199,7 +199,7 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 
 /* ---------- Pasek zakładek ---------- */
 .tabbar {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: var(--surface);
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); background: var(--surface);
   border-top: 1px solid var(--line); position: relative; z-index: 700;
   padding: 4px max(0px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 6px) max(0px, env(safe-area-inset-left, 0px));
 }
@@ -212,3 +212,15 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 
 .pos-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--now); border: 3px solid #fff; box-shadow: 0 0 0 8px rgba(234,88,12,.2); }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+/* ---------- Osiedla i zbiorcza lista ulic ---------- */
+.list li.group { padding: 14px 0 6px; border-bottom: 1px solid var(--line); }
+.list li.group .n { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.all-streets { display: flex; flex-direction: column; gap: 16px; }
+.street-town { display: flex; flex-direction: column; gap: 6px; }
+.town-link {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px; border: 0; background: none;
+  padding: 6px 2px; cursor: pointer; text-align: left; font: 700 18px var(--font-num); color: var(--fg);
+}
+.town-link .m { font: 500 13px var(--font-ui); color: var(--accent); white-space: nowrap; }
+.tool:disabled { opacity: .5; cursor: default; }

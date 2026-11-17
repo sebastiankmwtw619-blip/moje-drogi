@@ -97,7 +97,28 @@
     </div>
   </section>
 
-  <!-- 3. SZCZEGÓŁY MIEJSCOWOŚCI -->
+  <!-- 3. WSZYSTKIE ULICE W JEDNYM MIEJSCU -->
+  <section id="view-streets" class="view" aria-label="Wszystkie przejechane ulice">
+    <div class="page">
+      <h1>Przejechane ulice</h1>
+      <div class="tiles">
+        <div class="tile"><b id="s-count">0</b><span>ulic</span></div>
+        <div class="tile"><b id="s-towns">0</b><span>miejscowości</span></div>
+        <div class="tile"><b id="s-districts">0</b><span>osiedli</span></div>
+      </div>
+      <div class="search page-search">
+        <label for="street-filter" class="sr-only">Szukaj ulicy, osiedla lub miejscowości</label>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="street-filter" type="search" placeholder="Szukaj ulicy, osiedla lub miejscowości" autocomplete="off">
+      </div>
+      <button id="btn-csv" class="tool" type="button">Zapisz listę ulic (CSV, Excel)</button>
+      <p id="streets-empty" class="empty">Tu zbiorą się wszystkie ulice, którymi przejedziesz, pogrupowane według miejscowości i osiedli.</p>
+      <p id="streets-nomatch" class="empty" hidden>Nie znalazłem takiej ulicy wśród przejechanych.</p>
+      <div id="all-streets" class="all-streets"></div>
+    </div>
+  </section>
+
+  <!-- 4. SZCZEGÓŁY MIEJSCOWOŚCI -->
   <section id="view-town" class="view" aria-label="Szczegóły miejscowości">
     <div class="page">
       <div class="town-head">
@@ -143,6 +164,8 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l-6 2v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>Mapa</button>
   <button type="button" data-view="view-towns">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Miejscowości</button>
+  <button type="button" data-view="view-streets">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>Ulice</button>
   <button type="button" data-view="view-town">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Statystyki</button>
 </nav>

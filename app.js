@@ -12,6 +12,9 @@ const MIN_STEP_M = 8;           // pomijamy punkty bliżej niż 8 m od poprzedni
 const MAX_ACCURACY_M = 35;      // pomijamy niedokładne odczyty GPS
 const NO_STREET = '(droga bez nazwy)';
 const NO_TOWN = 'Poza miejscowością';
+const NO_DISTRICT = 'Bez podziału na osiedla';
+const TRIP_V = 2;               // wersja rozpoznawania ulic (2 = z osiedlami)
+const GREEN = '#16A34A';        // kolor przejechanych dróg na mapie
 
 const $ = (s) => document.querySelector(s);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -90,6 +93,7 @@ const state = {
   detailTab: 'streets',
   focus: null,        // miejscowość wybrana w wyszukiwarce: { name, lat, lon }
   filter: '',         // filtr listy miejscowości
+  streetFilter: '',   // filtr zbiorczej listy ulic
 };
 
 // porównywanie nazw bez wielkości liter i polskich znaków („lodz” znajdzie „Łódź”)
@@ -114,7 +118,7 @@ function drawTrips() {
   visitedLayer.clearLayers();
   for (const t of state.trips) {
     if (t.recording || t.points.length < 2) continue;
-    L.polyline(t.points.map((p) => [p[0], p[1]]), { color: '#2563EB', weight: 5, opacity: 0.8, interactive: false }).addTo(visitedLayer);
+    L.polyline(t.points.map((p) => [p[0], p[1]]), { color: GREEN, weight: 5, opacity: 0.85, interactive: false }).addTo(visitedLayer);
   }
 }
 function showPos(lat, lon, acc) {
@@ -238,7 +242,7 @@ let lastNominatim = 0, processing = false;
 async function reverse(p) {
   const k = p[0].toFixed(4) + ',' + p[1].toFixed(4);
   const cached = await dbGet('geo', k);
-  if (cached) return cached;
+  if (cached && 'district' in cached) return cached;
   const wait = lastNominatim + 1100 - Date.now();   // limit Nominatim: 1 zapytanie na sekundę
   if (wait > 0) await sleep(wait);
   lastNominatim = Date.now();
@@ -251,6 +255,7 @@ async function reverse(p) {
     k,
     road: a.road || a.pedestrian || a.footway || null,
     town: a.city || a.town || a.village || a.hamlet || a.municipality || null,
+    district: a.suburb || a.city_district || a.quarter || null,
   };
   await dbPut('geo', v);
   return v;
@@ -266,7 +271,7 @@ async function processTrip(t) {
   }
   if (since > 0) samples.push({ p: pts[pts.length - 1], d: since });
 
-  const streets = {}, townPts = {};
+  const streets = {}, dstreets = {}, townPts = {};
   for (let i = 0; i < samples.length; i++) {
     setStatus(`Rozpoznaję ulice: ${i + 1} z ${samples.length}`);
     const g = await reverse(samples[i].p);
@@ -274,10 +279,16 @@ async function processTrip(t) {
     const street = g.road || NO_STREET;
     streets[town] ??= {};
     streets[town][street] = (streets[town][street] || 0) + samples[i].d;
+    const district = g.district || NO_DISTRICT;
+    dstreets[town] ??= {};
+    dstreets[town][district] ??= {};
+    dstreets[town][district][street] = (dstreets[town][district][street] || 0) + samples[i].d;
     townPts[town] ??= [samples[i].p[0], samples[i].p[1]];
   }
   t.streets = streets;
+  t.dstreets = dstreets;
   t.townPts = townPts;
+  t.v = TRIP_V;
   t.km = trackLen(pts);
   t.processed = true;
   await dbPut('trips', t);
@@ -353,7 +364,7 @@ function rebuild() {
   for (const t of state.trips) {
     if (!t.streets) continue;
     for (const [town, sts] of Object.entries(t.streets)) {
-      const T = (agg[town] ??= { name: town, m: 0, streets: {}, trips: [], last: 0, pt: null });
+      const T = (agg[town] ??= { name: town, m: 0, streets: {}, districts: {}, trips: [], last: 0, pt: null });
       T.trips.push(t);
       T.last = Math.max(T.last, t.start);
       T.pt ??= t.townPts?.[town] || null;
@@ -362,6 +373,18 @@ function rebuild() {
         const S = (T.streets[s] ??= { m: 0, n: 0 });
         S.m += m;
         S.n += 1;
+      }
+      // osiedla (trasy rozpoznane przed wersją 2 trafiają do „bez podziału”, dopóki się nie przeliczą)
+      const byDistrict = t.dstreets?.[town] || { [NO_DISTRICT]: sts };
+      for (const [d, dsts] of Object.entries(byDistrict)) {
+        const D = (T.districts[d] ??= { name: d, m: 0, streets: {} });
+        for (const [s, m] of Object.entries(dsts)) {
+          D.m += m;
+          const S = (D.streets[s] ??= { m: 0, n: 0, last: 0 });
+          S.m += m;
+          S.n += 1;
+          S.last = Math.max(S.last, t.start);
+        }
       }
     }
   }
@@ -387,7 +410,7 @@ function townsSorted() {
 }
 
 /* ---------------- Widoki ---------------- */
-function renderAll() { renderSheet(); renderTowns(); renderTown(); }
+function renderAll() { renderSheet(); renderTowns(); renderTown(); renderStreets(); }
 
 function sheetTown() {
   if (state.focus) return state.agg[state.focus.name] || null;
@@ -489,13 +512,19 @@ function renderTown() {
   $('#tab-trips').setAttribute('aria-selected', String(state.detailTab === 'trips'));
 
   if (state.detailTab === 'streets') {
-    const visited = Object.entries(T.streets).sort((a, b) => b[1].m - a[1].m);
-    for (const [s, v] of visited) {
-      list.append(el('li', {}, el('span', { class: 'd' }), el('span', { class: 'n' }, s),
-        el('span', { class: 'm' }, `${v.n}× · ${fmtKm(v.m)}`)));
+    const districts = districtsSorted(T);
+    const showHeads = !(districts.length === 1 && districts[0].name === NO_DISTRICT);
+    for (const D of districts) {
+      const streets = Object.entries(D.streets).sort((a, b) => b[1].m - a[1].m);
+      if (showHeads) list.append(groupHead(D.name, streets.filter(([s]) => s !== NO_STREET).length, D.m));
+      for (const [s, v] of streets) {
+        list.append(el('li', {}, el('span', { class: 'd' }), el('span', { class: 'n' }, s),
+          el('span', { class: 'm' }, `${v.n}× · ${fmtKm(v.m)}`)));
+      }
     }
     if (meta) {
       const missing = meta.names.filter((s) => !T.streets[s]);
+      if (missing.length) list.append(groupHead('Jeszcze nie przejechane', missing.length, null));
       for (const s of missing) {
         list.append(el('li', {}, el('span', { class: 'd no' }), el('span', { class: 'n' }, s), el('span', { class: 'm' }, 'jeszcze nie')));
       }
@@ -521,6 +550,91 @@ function renderTown() {
         del));
     }
   }
+}
+
+function districtsSorted(T) {
+  return Object.values(T.districts).sort((a, b) =>
+    (a.name === NO_DISTRICT) - (b.name === NO_DISTRICT) || b.m - a.m);
+}
+function groupHead(name, n, m) {
+  return el('li', { class: 'group' },
+    el('span', { class: 'n' }, name),
+    el('span', { class: 'm' }, `${n} ${plural(n, 'ulica', 'ulice', 'ulic')}${m != null ? ' · ' + fmtKm(m) : ''}`));
+}
+
+/* ---------------- Wszystkie ulice w jednym miejscu ---------------- */
+function allStreetRows() {
+  const rows = [];
+  for (const T of Object.values(state.agg)) {
+    if (T.name === NO_TOWN) continue;
+    for (const D of Object.values(T.districts)) {
+      for (const [s, v] of Object.entries(D.streets)) {
+        if (s === NO_STREET) continue;
+        rows.push({ town: T.name, district: D.name, street: s, n: v.n, m: v.m, last: v.last });
+      }
+    }
+  }
+  return rows;
+}
+
+function renderStreets() {
+  const rows = allStreetRows();
+  const f = norm(state.streetFilter || '');
+  const shown = f ? rows.filter((r) => norm(`${r.street} ${r.district} ${r.town}`).includes(f)) : rows;
+  const uniq = new Set(rows.map((r) => r.town + '|' + r.street)).size;
+  $('#s-count').textContent = uniq;
+  $('#s-towns').textContent = new Set(rows.map((r) => r.town)).size;
+  $('#s-districts').textContent = new Set(rows.filter((r) => r.district !== NO_DISTRICT).map((r) => r.town + '|' + r.district)).size;
+  $('#streets-empty').hidden = rows.length > 0;
+  $('#streets-nomatch').hidden = !(rows.length && !shown.length);
+  $('#btn-csv').disabled = !rows.length;
+
+  const box = $('#all-streets');
+  box.replaceChildren();
+  const byTown = new Map();
+  for (const r of shown) {
+    if (!byTown.has(r.town)) byTown.set(r.town, new Map());
+    const dm = byTown.get(r.town);
+    if (!dm.has(r.district)) dm.set(r.district, []);
+    dm.get(r.district).push(r);
+  }
+  const towns = [...byTown.keys()].sort((a, b) => a.localeCompare(b, 'pl'));
+  for (const town of towns) {
+    const dm = byTown.get(town);
+    const count = [...dm.values()].reduce((x, a) => x + a.length, 0);
+    const ul = el('ul', { class: 'card list' });
+    const ds = [...dm.keys()].sort((a, b) => (a === NO_DISTRICT) - (b === NO_DISTRICT) || a.localeCompare(b, 'pl'));
+    const showHeads = !(ds.length === 1 && ds[0] === NO_DISTRICT);
+    for (const d of ds) {
+      const items = dm.get(d).sort((a, b) => a.street.localeCompare(b.street, 'pl'));
+      if (showHeads) ul.append(groupHead(d, items.length, items.reduce((x, r) => x + r.m, 0)));
+      for (const r of items) {
+        ul.append(el('li', {}, el('span', { class: 'd' }), el('span', { class: 'n' }, r.street),
+          el('span', { class: 'm' }, `${r.n}× · ${fmtDate(r.last)}`)));
+      }
+    }
+    const head = el('button', { class: 'town-link', type: 'button', onclick: () => openTown(town) },
+      el('span', {}, town), el('span', { class: 'm' }, `${count} ${plural(count, 'ulica', 'ulice', 'ulic')} ›`));
+    box.append(el('section', { class: 'street-town' }, head, ul));
+  }
+}
+
+function exportCsv() {
+  const rows = allStreetRows().sort((a, b) =>
+    a.town.localeCompare(b.town, 'pl') || a.district.localeCompare(b.district, 'pl') || a.street.localeCompare(b.street, 'pl'));
+  const q = (v) => '"' + String(v).replace(/"/g, '""') + '"';
+  const lines = [['Miejscowość', 'Osiedle', 'Ulica', 'Liczba przejazdów', 'Km', 'Ostatni przejazd'].map(q).join(';')];
+  for (const r of rows) {
+    lines.push([r.town, r.district === NO_DISTRICT ? '' : r.district, r.street, r.n,
+      (r.m / 1000).toFixed(2).replace('.', ','), new Date(r.last).toISOString().slice(0, 10)].map(q).join(';'));
+  }
+  // BOM, żeby Excel poprawnie pokazał polskie znaki
+  const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const a = el('a', { href: URL.createObjectURL(blob), download: `moje-drogi-ulice-${new Date().toISOString().slice(0, 10)}.csv` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 function showView(id) {
@@ -596,6 +710,8 @@ async function init() {
     if (t.points.length < 3) { await dbDel('trips', t.id); } else await dbPut('trips', t);
   }
   state.trips = state.trips.filter((t) => t.points.length >= 3 || t.source === 'gpx');
+  // trasy rozpoznane starszą wersją przeliczamy jeszcze raz, żeby dostały podział na osiedla
+  for (const t of state.trips) if (t.processed && t.v !== TRIP_V) t.processed = false;
   rebuild();
   const all = state.trips.flatMap((t) => t.points.map((p) => [p[0], p[1]]));
   if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 15 });
@@ -749,6 +865,8 @@ $('#q-clear').addEventListener('click', () => { clearSearch(); qInput.focus(); }
 qInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeResults(); });
 document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.search-wrap')) closeResults(); });
 $('#town-filter').addEventListener('input', (e) => { state.filter = e.target.value; renderTowns(); });
+$('#street-filter').addEventListener('input', (e) => { state.streetFilter = e.target.value; renderStreets(); });
+$('#btn-csv').addEventListener('click', exportCsv);
 document.querySelectorAll('.tabbar button').forEach((b) => b.addEventListener('click', () => showView(b.dataset.view)));
 document.querySelectorAll('.pill').forEach((b) => b.addEventListener('click', () => {
   state.sort = b.dataset.sort;
