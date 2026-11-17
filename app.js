@@ -352,7 +352,7 @@ function insideSegments(lat, lon, segs) {
   }
   return inside;
 }
-function assignDistricts(els, ways) {
+function assignDistricts(els, ways, centersOut = {}) {
   const polys = els
     .filter((e) => (e.type === 'relation' || e.type === 'way') && !e.tags?.highway && e.tags?.name)
     .map((e) => {
@@ -378,10 +378,124 @@ function assignDistricts(els, ways) {
       }
     }
     (out[d || NO_DISTRICT] ??= new Set()).add(w.tags.name);
+    if (c) (centersOut[d || NO_DISTRICT] ??= []).push([c.lat, c.lon]);
   }
   const res = {};
   for (const [d, set] of Object.entries(out)) res[d] = [...set].sort((a, b) => a.localeCompare(b, 'pl'));
   return res;
+}
+
+/* ---------------- Kształty osiedli do mapy ---------------- */
+const samePt = (a, b) => Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
+// skleja odcinki granicy (członków relacji) w zamknięte pierścienie
+function assembleRings(geoms) {
+  const parts = geoms.map((g) => g.map((p) => [p.lat, p.lon])).filter((g) => g.length > 1);
+  const rings = [];
+  while (parts.length) {
+    let ring = parts.shift();
+    for (let guard = 0; !samePt(ring[0], ring[ring.length - 1]) && guard < 2000; guard++) {
+      const end = ring[ring.length - 1];
+      const i = parts.findIndex((q) => samePt(q[0], end) || samePt(q[q.length - 1], end));
+      if (i < 0) break;
+      let q = parts.splice(i, 1)[0];
+      if (!samePt(q[0], end)) q = q.slice().reverse();
+      ring = ring.concat(q.slice(1));
+    }
+    if (ring.length >= 4) rings.push(ring);
+  }
+  return rings;
+}
+// upraszcza pierścień: punkty co najmniej 25 m od siebie, 5 miejsc po przecinku
+function simplifyRing(r, step = 25) {
+  const out = [];
+  for (const p of r) if (!out.length || dist(out[out.length - 1], p) >= step) out.push([+p[0].toFixed(5), +p[1].toFixed(5)]);
+  return out.length >= 3 ? out : null;
+}
+// otoczka wypukła (algorytm monotoniczny) — przybliżony obszar osiedla bez granicy w OpenStreetMap
+function convexHull(pts) {
+  const p = [...pts].sort((a, b) => a[1] - b[1] || a[0] - b[0]);
+  if (p.length < 3) return null;
+  const cross = (o, a, b) => (a[1] - o[1]) * (b[0] - o[0]) - (a[0] - o[0]) * (b[1] - o[1]);
+  const lower = [], upper = [];
+  for (const q of p) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q); }
+  for (const q of p.reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q); }
+  const h = lower.slice(0, -1).concat(upper.slice(0, -1)).map((q) => [+q[0].toFixed(5), +q[1].toFixed(5)]);
+  return h.length >= 3 ? h : null;
+}
+/** Dla każdego osiedla: granica z OpenStreetMap albo przybliżony obszar z położenia jego ulic. */
+function districtShapes(els, districts, centers) {
+  if (!districts) return null;
+  const out = {};
+  for (const d of Object.keys(districts)) {
+    if (d === NO_DISTRICT) continue;
+    const src = els.find((e) => (e.type === 'relation' || e.type === 'way') && !e.tags?.highway && e.tags?.name === d);
+    let rings = [];
+    if (src?.type === 'way' && src.geometry) rings = assembleRings([src.geometry]);
+    if (src?.type === 'relation') rings = assembleRings((src.members || []).filter((m) => m.type === 'way' && m.geometry && (m.role === 'outer' || m.role === '')).map((m) => m.geometry));
+    rings = rings.map((r) => simplifyRing(r)).filter(Boolean);
+    if (rings.length) { out[d] = { exact: true, rings }; continue; }
+    const pts = centers[d] || [];
+    const hull = convexHull(pts);
+    if (hull) out[d] = { exact: false, rings: [hull] };
+    else if (pts.length) out[d] = { exact: false, center: [+pts[0][0].toFixed(5), +pts[0][1].toFixed(5)] };
+  }
+  return out;
+}
+
+/* ---------------- Mapa osiedli ---------------- */
+// skala od szarego (0%) przez coraz ciemniejsze zielenie do pełnej (100%)
+const PCT_BINS = [
+  { max: 0, color: '#D1D5DB', label: '0%' },
+  { max: 24, color: '#DCFCE7', label: '1–24%' },
+  { max: 49, color: '#86EFAC', label: '25–49%' },
+  { max: 74, color: '#4ADE80', label: '50–74%' },
+  { max: 99, color: '#16A34A', label: '75–99%' },
+  { max: 100, color: '#14532D', label: '100%' },
+];
+const pctColor = (pct) => PCT_BINS.find((b) => pct <= b.max).color;
+let dmap = null, dLayer = null;
+
+function renderDistrictMap(T, meta, dp) {
+  const card = $('#d-map-card');
+  const shapes = meta?.shapes;
+  const items = (dp || []).filter((D) => shapes?.[D.name]);
+  if (!items.length) { card.hidden = true; return; }
+  card.hidden = false;
+  if (!dmap) {
+    dmap = L.map('d-map', { zoomControl: true, scrollWheelZoom: false, attributionControl: true });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(dmap);
+    dLayer = L.featureGroup().addTo(dmap);
+  }
+  dLayer.clearLayers();
+  let approx = false;
+  for (const D of items) {
+    const sh = shapes[D.name];
+    const style = {
+      color: sh.exact ? '#14532D' : '#475569', weight: 1.5, dashArray: sh.exact ? null : '5 5',
+      fillColor: pctColor(D.pct), fillOpacity: 0.6,
+    };
+    if (!sh.exact) approx = true;
+    const layer = sh.rings ? L.polygon(sh.rings.map((r) => [r]), style) : L.circle(sh.center, { ...style, radius: 300 });
+    const pop = el('div', { class: 'dpop' }, el('b', {}, D.name), `${D.pct}% · ${D.hit} z ${D.total} ${plural(D.total, 'ulicy', 'ulic', 'ulic')}`,
+      sh.exact ? null : el('div', {}, 'obszar przybliżony'));
+    layer.bindPopup(pop).bindTooltip(D.pct + '%', { permanent: true, direction: 'center', className: 'dlabel' });
+    dLayer.addLayer(layer);
+  }
+  const legend = $('#d-legend');
+  legend.replaceChildren(...PCT_BINS.map((b) => el('li', {}, el('span', { class: 'sw', style: `background:${b.color}` }), b.label)));
+  if (approx) legend.append(el('li', {}, el('span', { class: 'sw approx' }), 'obszar przybliżony'));
+  $('#d-map-note').textContent = approx
+    ? 'Przerywana linia: OpenStreetMap nie ma granicy tego osiedla, więc obszar wyznaczono z położenia jego ulic.'
+    : 'Stuknij osiedle, żeby zobaczyć szczegóły.';
+  fitDistrictMap();
+}
+function fitDistrictMap() {
+  if (!dmap || $('#d-map-card').hidden) return;
+  dmap.invalidateSize();
+  const b = dLayer.getBounds();
+  if (b.isValid()) dmap.fitBounds(b, { padding: [16, 16], maxZoom: 16 });
 }
 
 /** Procent przejechanych ulic w każdym osiedlu. */
@@ -426,7 +540,12 @@ async function countStreets(name) {
   const els = res.elements || [];
   const ways = els.filter((e) => e.type === 'way' && e.tags?.highway && e.tags?.name);
   const names = [...new Set(ways.map((w) => w.tags.name))].sort((a, b) => a.localeCompare(b, 'pl'));
-  const meta = { name, total: names.length, names, areaName: area.tags.name, checked: Date.now(), districts: assignDistricts(els, ways) };
+  const centers = {};
+  const districts = assignDistricts(els, ways, centers);
+  const meta = {
+    name, total: names.length, names, areaName: area.tags.name, checked: Date.now(),
+    districts, shapes: districtShapes(els, districts, centers),
+  };
   await dbPut('towns', meta);
   state.townMeta[name] = meta;
 }
@@ -560,6 +679,7 @@ function renderTown() {
     $('#d-name').textContent = 'Brak danych';
     $('#d-sub').textContent = 'Nagraj pierwszą trasę';
     $('#d-area').textContent = '';
+    $('#d-map-card').hidden = true;
     return;
   }
   const pr = progress(T);
@@ -580,6 +700,7 @@ function renderTown() {
   $('#d-area').textContent = meta
     ? `Ulice liczone w granicach: ${meta.areaName} (OpenStreetMap, ${fmtDate(meta.checked)}).` +
       (meta.districts === undefined ? ' Policz ponownie, żeby zobaczyć procent dla każdego osiedla.'
+        : meta.districts && meta.shapes === undefined ? ' Policz ponownie, żeby zobaczyć mapę osiedli.'
         : meta.districts === null ? ' OpenStreetMap nie dzieli tej miejscowości na osiedla.' : '')
     : 'Kliknij „Policz wszystkie ulice”, żeby zobaczyć, jaki procent miejscowości już przejechałeś.';
 
@@ -587,6 +708,7 @@ function renderTown() {
   $('#tab-trips').setAttribute('aria-selected', String(state.detailTab === 'trips'));
 
   const dp = districtProgress(T, meta);
+  renderDistrictMap(T, meta, dp);
   if (state.detailTab === 'streets' && dp) {
     // tryb z procentami osiedli: każde osiedle z paskiem, przejechane i jeszcze nie
     const inAny = new Set(Object.values(meta.districts).flat());
@@ -747,6 +869,7 @@ function showView(id) {
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === id));
   document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.view === id));
   if (id === 'view-map') setTimeout(() => map.invalidateSize(), 0);
+  if (id === 'view-town') setTimeout(fitDistrictMap, 0);
 }
 
 /* ---------------- Import / eksport ---------------- */
