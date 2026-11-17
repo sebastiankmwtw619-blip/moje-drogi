@@ -1428,6 +1428,8 @@ async function openShare(key) {
   $('#share-title').textContent = `Udostępnij: ${dayLabel(key)}`;
   $('#share-text').textContent = shareText(S);
   $('#share-sms').href = 'sms:?&body=' + encodeURIComponent(smsText(S));
+  // WhatsApp: otwiera aplikację (albo WhatsApp Web) z gotowym tekstem; odbiorcę wybierasz w WhatsAppie
+  $('#share-wa').href = 'https://wa.me/?text=' + encodeURIComponent(smsText(S));
   $('#share-hint').textContent = 'Przygotowuję obraz…';
   $('#share-go').disabled = true;
   $('#share-modal').hidden = false;

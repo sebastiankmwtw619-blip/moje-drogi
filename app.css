@@ -361,6 +361,7 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
   background: #15803D; color: #fff; font-weight: 600; font-size: 16px; text-decoration: none;
 }
 .sms-btn:hover { color: #fff; filter: brightness(.95); }
+.wa-btn { background: #0F766E; }
 .sms-btn svg { width: 22px; height: 22px; }
 .shared-card { border: 2px solid #7C3AED; }
 .shared-info { margin: 0; font-size: 14px; color: var(--fg); white-space: pre-line; }
