@@ -63,6 +63,16 @@
         <div><b id="st-towns">0</b><span>miejscowości</span></div>
         <div><b id="st-total">0 km</b><span>wszystkie trasy</span></div>
       </div>
+      <section id="shared-card" class="ns-card shared-card" hidden aria-labelledby="shared-title">
+        <div class="ns-head">
+          <h2 id="shared-title">Udostępniona trasa</h2>
+          <button id="shared-close" class="q-clear" type="button" aria-label="Zamknij udostępnioną trasę">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+        <p id="shared-info" class="shared-info"></p>
+        <button id="shared-save" class="ghost" type="button">Zapisz w moich trasach</button>
+      </section>
       <section id="ns-card" class="ns-card" hidden aria-labelledby="ns-title">
         <div class="ns-head">
           <h2 id="ns-title">Nowe ulice z tej trasy</h2>
@@ -268,10 +278,16 @@
     <canvas id="share-canvas" class="share-canvas" width="1080" height="1350" role="img" aria-label="Podgląd obrazu: mapa z trasami dnia i podsumowanie"></canvas>
     <p id="share-text" class="share-text"></p>
     <label class="check"><input type="checkbox" id="share-gpx"> Dołącz plik GPX (do otwarcia w innych aplikacjach map)</label>
+    <a id="share-sms" class="sms-btn" href="sms:">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>
+      Wyślij SMS z linkiem do trasy
+    </a>
     <div class="row-btns">
-      <button id="share-go" class="del-btn share-go" type="button">Udostępnij</button>
+      <button id="share-go" class="ghost" type="button">Inne aplikacje…</button>
+      <button id="share-copy" class="ghost" type="button">Kopiuj link</button>
       <button id="share-save" class="ghost" type="button">Zapisz obraz</button>
     </div>
+    <p class="fine">Odbiorca SMS otworzy link w przeglądarce i zobaczy trasę na mapie, także bez tej aplikacji. Trasa jest zapisana w samym linku, nie na żadnym serwerze.</p>
     <p id="share-hint" class="fine" role="status"></p>
   </div>
 </div>

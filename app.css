@@ -355,6 +355,17 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 .share-go { background: var(--accent); color: var(--ink-btn-fg); flex: 1 1 140px; }
 .share-go:disabled { opacity: .5; }
 
+/* SMS i udostępniona trasa */
+.sms-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 52px; border-radius: 14px;
+  background: #15803D; color: #fff; font-weight: 600; font-size: 16px; text-decoration: none;
+}
+.sms-btn:hover { color: #fff; filter: brightness(.95); }
+.sms-btn svg { width: 22px; height: 22px; }
+.shared-card { border: 2px solid #7C3AED; }
+.shared-info { margin: 0; font-size: 14px; color: var(--fg); white-space: pre-line; }
+.shared-card .ghost { flex: none; }
+
 /* przełącznik powiadomień */
 .tool-switch { justify-content: space-between; gap: 12px; }
 .sw-ui { width: 44px; height: 26px; border-radius: 13px; background: var(--track); position: relative; flex-shrink: 0; transition: background .15s; }

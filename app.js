@@ -1291,6 +1291,135 @@ function canvasBlob(canvas) {
   });
 }
 
+/* ---------------- Link do trasy (SMS): trasa zakodowana w samym linku ---------------- */
+// Format: #s=v1!RRRR-MM-DD!metry!ms jazdy!nowe ulice!odcinek,odcinek,…  (odcinki: kodowanie „polyline”, dokładność 1e-5;
+// „!” i „,” nie występują w alfabecie „polyline” (znaki 63–126), więc bezpiecznie oddzielają pola)
+function encNum(v) {
+  v = v < 0 ? ~(v << 1) : v << 1;
+  let s = '';
+  while (v >= 0x20) { s += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+  return s + String.fromCharCode(v + 63);
+}
+function encPoly(pts) {
+  let la0 = 0, lo0 = 0, out = '';
+  for (const p of pts) {
+    const la = Math.round(p[0] * 1e5), lo = Math.round(p[1] * 1e5);
+    out += encNum(la - la0) + encNum(lo - lo0);
+    la0 = la; lo0 = lo;
+  }
+  return out;
+}
+function decPoly(str) {
+  const out = [];
+  let i = 0, la = 0, lo = 0;
+  while (i < str.length && out.length < 5000) {
+    const vals = [];
+    for (let k = 0; k < 2; k++) {
+      let b, shift = 0, res = 0;
+      do {
+        if (i >= str.length) throw new Error('uszkodzony link');
+        b = str.charCodeAt(i++) - 63;
+        res |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20 && shift < 35);
+      vals.push(res & 1 ? ~(res >> 1) : res >> 1);
+    }
+    la += vals[0]; lo += vals[1];
+    out.push([la / 1e5, lo / 1e5]);
+  }
+  return out;
+}
+// upraszczanie linii (Douglas–Peucker) z tolerancją w metrach
+function simplify(pts, tol) {
+  if (pts.length < 3) return pts;
+  const k = Math.cos((pts[0][0] * Math.PI) / 180) * 111320;
+  const xy = pts.map((p) => [p[1] * k, p[0] * 110540]);
+  const keep = new Uint8Array(pts.length);
+  keep[0] = keep[pts.length - 1] = 1;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let best = -1, dmax = tol;
+    const [ax, ay] = xy[a], [bx, by] = xy[b];
+    const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy) || 1;
+    for (let i = a + 1; i < b; i++) {
+      const d = Math.abs(dy * xy[i][0] - dx * xy[i][1] + bx * ay - by * ax) / len;
+      if (d > dmax) { dmax = d; best = i; }
+    }
+    if (best > 0) { keep[best] = 1; stack.push([a, best], [best, b]); }
+  }
+  return pts.filter((_, i) => keep[i]);
+}
+const MAX_LINK = 1800; // znaki linku — mieści się w kilku SMS-ach i w każdej przeglądarce
+function shareLink(S) {
+  const segs = S.trips.flatMap((t) => segmentsOf(t.points)).filter((s) => s.length > 1);
+  const base = location.origin + location.pathname;
+  let payload = '';
+  for (const tol of [8, 15, 30, 60, 120, 250, 500]) {
+    const enc = segs.map((s) => encPoly(simplify(s, tol))).join(',');
+    payload = ['v1', S.key, Math.round(S.m), Math.round(S.ms), S.newCount, enc].join('!');
+    if ((base + '#s=' + encodeURIComponent(payload)).length <= MAX_LINK) break;
+  }
+  return base + '#s=' + encodeURIComponent(payload);
+}
+function smsText(S) {
+  return `Moje Drogi · ${dayLabel(S.key)}: ${fmtKm(S.m)}, ${S.trips.length} ${plural(S.trips.length, 'trasa', 'trasy', 'tras')}` +
+    `${S.newCount ? `, ${S.newCount} ${plural(S.newCount, 'nowa ulica', 'nowe ulice', 'nowych ulic')}` : ''}.\nZobacz trasę na mapie: ${shareLink(S)}`;
+}
+
+/** Odczyt trasy z linku (dane z zewnątrz: sprawdzane i wyświetlane tylko jako tekst). */
+function parseSharedHash(hash) {
+  const m = /^#s=(.+)$/.exec(hash || '');
+  if (!m) return null;
+  try {
+    const parts = decodeURIComponent(m[1]).split('!');
+    if (parts[0] !== 'v1' || parts.length !== 6 || !/^\d{4}-\d{2}-\d{2}$/.test(parts[1])) return null;
+    const segs = parts[5].split(',').filter(Boolean).slice(0, 200).map(decPoly)
+      .map((s) => s.filter((p) => Math.abs(p[0]) <= 90 && Math.abs(p[1]) <= 180)).filter((s) => s.length > 1);
+    if (!segs.length) return null;
+    return { key: parts[1], m: Math.max(0, +parts[2] || 0), ms: Math.max(0, +parts[3] || 0), newCount: Math.max(0, +parts[4] || 0) | 0, segs };
+  } catch {
+    return null;
+  }
+}
+let sharedLayer = null, sharedData = null;
+function showSharedFromHash() {
+  const d = parseSharedHash(location.hash);
+  if (!d) return false;
+  sharedData = d;
+  if (sharedLayer) sharedLayer.remove();
+  sharedLayer = L.polyline(d.segs, { color: '#7C3AED', weight: 6, opacity: 0.95 }).addTo(map);
+  setFollow(false);
+  showView('view-map');
+  map.fitBounds(sharedLayer.getBounds(), { padding: [30, 30], maxZoom: 16 });
+  $('#shared-title').textContent = 'Udostępniona trasa';
+  $('#shared-info').textContent = `${dayLabel(d.key)}\n${fmtKm(d.m)}${d.ms ? ' · ' + fmtDur(d.ms) + ' jazdy' : ''}${d.newCount ? ` · ${d.newCount} ${plural(d.newCount, 'nowa ulica', 'nowe ulice', 'nowych ulic')}` : ''}\nFioletowa linia na mapie.`;
+  $('#shared-save').hidden = false;
+  $('#shared-card').hidden = false;
+  return true;
+}
+function closeShared() {
+  if (sharedLayer) { sharedLayer.remove(); sharedLayer = null; }
+  sharedData = null;
+  $('#shared-card').hidden = true;
+  try { history.replaceState(null, '', location.pathname); } catch { location.hash = ''; }
+}
+async function saveShared() {
+  const d = sharedData;
+  if (!d) return;
+  const [y, mo, da] = d.key.split('-').map(Number);
+  const start = new Date(y, mo - 1, da, 12).getTime();
+  const points = [];
+  d.segs.forEach((seg, i) => seg.forEach((p, j) => points.push(i > 0 && j === 0 ? [p[0], p[1], 0, 1] : [p[0], p[1], 0])));
+  const t = { id: 's' + Date.now(), start, end: start + d.ms, source: 'gpx', points, recording: false, processed: false, km: trackLen(points), pausedMs: 0 };
+  await dbPut('trips', t);
+  state.trips.push(t);
+  rebuild();
+  closeShared();
+  setStatus('Zapisano udostępnioną trasę w Twoich trasach. Rozpoznaję ulice…');
+  processPending();
+}
+
 let shareCur = null;
 async function openShare(key) {
   const S = daySummary(key);
@@ -1298,6 +1427,7 @@ async function openShare(key) {
   shareCur = { S, blob: null };
   $('#share-title').textContent = `Udostępnij: ${dayLabel(key)}`;
   $('#share-text').textContent = shareText(S);
+  $('#share-sms').href = 'sms:?&body=' + encodeURIComponent(smsText(S));
   $('#share-hint').textContent = 'Przygotowuję obraz…';
   $('#share-go').disabled = true;
   $('#share-modal').hidden = false;
@@ -1619,7 +1749,11 @@ async function importBackup(file) {
 async function init() {
   initMap();
   try { idb = await openDb(); }
-  catch { setStatus('Przeglądarka nie pozwala zapisywać danych (tryb prywatny?).'); return; }
+  catch {
+    setStatus('Przeglądarka nie pozwala zapisywać danych (tryb prywatny?).');
+    if (showSharedFromHash()) $('#shared-save').hidden = true; // trasę z linku i tak pokaż
+    return;
+  }
 
   state.trips = await dbAll('trips');
   for (const m of await dbAll('towns')) state.townMeta[m.name] = m;
@@ -1644,8 +1778,9 @@ async function init() {
   for (const t of state.trips) if (t.processed && t.v !== TRIP_V) t.processed = false;
   rebuild();
   const all = state.trips.flatMap((t) => t.points.map((p) => [p[0], p[1]]));
-  if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 15 });
   setFollow(false);
+  // otwarte z linku SMS: pokaż udostępnioną trasę zamiast własnych
+  if (!showSharedFromHash() && all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 15 });
   processPending();
 
   // pokaż pozycję bez nagrywania (jednorazowo)
@@ -1808,6 +1943,15 @@ $('#btn-back').addEventListener('click', () => showView('view-towns'));
 $('#btn-trips').addEventListener('click', () => showView('view-trips'));
 $('#btn-theme').addEventListener('click', cycleMapTheme);
 $('#share-close').addEventListener('click', closeShare);
+$('#share-copy').addEventListener('click', async () => {
+  if (!shareCur) return;
+  const link = shareLink(shareCur.S);
+  try { await navigator.clipboard.writeText(link); $('#share-hint').textContent = 'Link skopiowany. Wklej go w SMS albo innym komunikatorze.'; }
+  catch { $('#share-hint').textContent = link; }
+});
+$('#shared-close').addEventListener('click', closeShared);
+$('#shared-save').addEventListener('click', saveShared);
+window.addEventListener('hashchange', showSharedFromHash);
 $('#share-go').addEventListener('click', doShare);
 $('#share-save').addEventListener('click', () => { if (shareCur?.blob) downloadBlob(shareCur.blob, `moje-drogi-${shareCur.S.key}.png`); });
 $('#share-modal').addEventListener('click', (e) => { if (e.target.id === 'share-modal') closeShare(); });
