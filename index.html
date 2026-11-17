@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1D4ED8">
+<title>Moje Drogi</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main>
+
+  <!-- 1. MAPA -->
+  <section id="view-map" class="view active" aria-label="Mapa">
+    <div class="map-wrap">
+      <div id="map"></div>
+      <div class="map-top">
+        <div class="chips">
+          <span class="chip"><i class="sw sw-visited"></i>Przejechane</span>
+          <span class="chip"><i class="sw sw-now"></i>Bieżąca trasa</span>
+        </div>
+        <div class="map-btns">
+          <button id="btn-layer" class="fab on" type="button" aria-pressed="true" aria-label="Pokaż lub ukryj przejechane drogi">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+          </button>
+          <button id="btn-follow" class="fab on" type="button" aria-pressed="true" aria-label="Śledź moją pozycję">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="sheet-title">
+          <span class="label" id="sheet-label">Jeszcze brak przejazdów</span>
+          <span class="big" id="sheet-big">0 ulic</span>
+        </div>
+        <button class="link" id="sheet-details" type="button">Szczegóły →</button>
+      </div>
+      <div class="stats3">
+        <div><b id="st-km">0 km</b><span>w tej miejscowości</span></div>
+        <div><b id="st-towns">0</b><span>miejscowości</span></div>
+        <div><b id="st-total">0 km</b><span>wszystkie trasy</span></div>
+      </div>
+      <button id="btn-rec" class="rec" type="button"><span class="dot"></span><span id="rec-label">Rozpocznij nagrywanie trasy</span></button>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </div>
+  </section>
+
+  <!-- 2. MIEJSCOWOŚCI -->
+  <section id="view-towns" class="view" aria-label="Miejscowości">
+    <div class="page">
+      <h1>Moje miejscowości</h1>
+      <div class="tiles">
+        <div class="tile"><b id="t-towns">0</b><span>miejscowości</span></div>
+        <div class="tile"><b id="t-km">0 km</b><span>przejechane</span></div>
+        <div class="tile"><b id="t-streets">0</b><span>ulic odkrytych</span></div>
+      </div>
+      <div class="filters" role="group" aria-label="Sortowanie">
+        <button type="button" class="pill on" data-sort="last">Ostatnio</button>
+        <button type="button" class="pill" data-sort="streets">Najwięcej ulic</button>
+        <button type="button" class="pill" data-sort="name">A–Z</button>
+      </div>
+      <ul id="town-list" class="town-list"></ul>
+      <p id="towns-empty" class="empty">Nagraj pierwszą trasę albo zaimportuj plik GPX. Miejscowości pojawią się tu same.</p>
+
+      <h2>Dane</h2>
+      <div class="tools">
+        <label class="tool">Importuj trasy GPX<input id="in-gpx" type="file" accept=".gpx,application/gpx+xml" multiple></label>
+        <button id="btn-export" class="tool" type="button">Zapisz kopię zapasową</button>
+        <label class="tool">Wczytaj kopię zapasową<input id="in-backup" type="file" accept=".json,application/json"></label>
+      </div>
+      <p class="fine">Trasy są zapisane tylko na tym telefonie. Rób co jakiś czas kopię zapasową.</p>
+    </div>
+  </section>
+
+  <!-- 3. SZCZEGÓŁY MIEJSCOWOŚCI -->
+  <section id="view-town" class="view" aria-label="Szczegóły miejscowości">
+    <div class="page">
+      <div class="town-head">
+        <button id="btn-back" class="icon-btn" type="button" aria-label="Wróć do listy miejscowości">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <div>
+          <h1 id="d-name">—</h1>
+          <span class="sub" id="d-sub"></span>
+        </div>
+      </div>
+
+      <div class="card summary">
+        <svg class="ring" viewBox="0 0 96 96" role="img" id="d-ring" aria-label="Postęp">
+          <circle cx="48" cy="48" r="40" class="ring-bg"/>
+          <circle cx="48" cy="48" r="40" class="ring-fg" id="d-ring-fg" stroke-dasharray="0 252" transform="rotate(-90 48 48)"/>
+          <text x="48" y="54" text-anchor="middle" id="d-ring-txt">?</text>
+        </svg>
+        <div class="grid2">
+          <div><b id="d-streets">0</b><span>ulic przejechanych</span></div>
+          <div><b id="d-total">?</b><span>ulic w granicach</span></div>
+          <div><b id="d-km">0 km</b><span>przejechane</span></div>
+          <div><b id="d-trips">0</b><span>przejazdów</span></div>
+        </div>
+      </div>
+      <div class="row-btns">
+        <button id="btn-count" class="ghost" type="button">Policz wszystkie ulice</button>
+        <button id="btn-show" class="ghost" type="button">Pokaż na mapie</button>
+      </div>
+      <p id="d-area" class="fine"></p>
+
+      <div class="seg" role="tablist">
+        <button type="button" role="tab" id="tab-streets" aria-selected="true">Ulice</button>
+        <button type="button" role="tab" id="tab-trips" aria-selected="false">Historia przejazdów</button>
+      </div>
+      <ul id="d-list" class="card list"></ul>
+    </div>
+  </section>
+</main>
+
+<nav class="tabbar" aria-label="Główne">
+  <button type="button" data-view="view-map" class="on">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4l-6 2v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>Mapa</button>
+  <button type="button" data-view="view-towns">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Miejscowości</button>
+  <button type="button" data-view="view-town">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Statystyki</button>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
