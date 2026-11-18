@@ -8,6 +8,7 @@
 const KRAKOW = [50.0614, 19.9366];
 const RADIUS_KM = 120;          // obszar, po którym jeździsz
 const SAMPLE_M = 200;           // co ile metrów trasy pytamy o nazwę ulicy
+const FOLLOW_ZOOM = 19;         // stałe przybliżenie przy śledzeniu pozycji: poziom ulicy z numerami domów
 const MIN_STEP_M = 8;           // pomijamy punkty bliżej niż 8 m od poprzedniego
 const MAX_ACCURACY_M = 35;      // pomijamy niedokładne odczyty GPS
 const NO_STREET = '(droga bez nazwy)';
@@ -142,10 +143,11 @@ function showPos(lat, lon, acc) {
     posMarker.setLatLng([lat, lon]);
     accCircle.setLatLng([lat, lon]).setRadius(acc);
   }
-  if (state.follow) map.setView([lat, lon], Math.max(map.getZoom(), 16), { animate: true });
+  if (state.follow) map.setView([lat, lon], FOLLOW_ZOOM, { animate: true });
 }
 function setFollow(on) {
   state.follow = on;
+  if (on && posMarker && map) map.setView(posMarker.getLatLng(), FOLLOW_ZOOM); // wróć do siebie w stałym przybliżeniu
   for (const b of [$('#btn-follow'), $('#btn-full-follow')]) {
     b.classList.toggle('on', on);
     b.setAttribute('aria-pressed', String(on));
@@ -1835,9 +1837,10 @@ async function init() {
   for (const t of state.trips) if (t.processed && t.v !== TRIP_V) t.processed = false;
   rebuild();
   const all = state.trips.flatMap((t) => t.points.map((p) => [p[0], p[1]]));
-  setFollow(false);
-  // otwarte z linku SMS: pokaż udostępnioną trasę zamiast własnych
+  // po starcie: śledzenie włączone — pierwszy odczyt GPS ustawi mapę na Tobie w stałym przybliżeniu
+  // (do tego czasu widać Twoje trasy)
   if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 15 });
+  setFollow(true);
   showSharedFromHash(); // otwarte z linku: trasa w zakładce „Udostępnij”
   processPending();
 
@@ -1864,7 +1867,7 @@ $('#btn-layer').addEventListener('click', () => {
 });
 $('#btn-follow').addEventListener('click', () => {
   setFollow(!state.follow);
-  if (state.follow && posMarker) map.setView(posMarker.getLatLng(), Math.max(map.getZoom(), 16));
+  if (state.follow && posMarker) map.setView(posMarker.getLatLng(), FOLLOW_ZOOM);
 });
 $('#sheet-details').addEventListener('click', () => {
   const T = sheetTown();
