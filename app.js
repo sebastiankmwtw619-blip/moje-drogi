@@ -677,7 +677,7 @@ function townsSorted() {
 }
 
 /* ---------------- Widoki ---------------- */
-function renderAll() { renderSheet(); renderTowns(); renderTown(); renderStreets(); renderTrips(); renderStats(); }
+function renderAll() { renderSheet(); renderTowns(); renderTown(); renderStreets(); renderTrips(); renderStats(); renderShareTab(); }
 
 function sheetTown() {
   if (state.focus) return state.agg[state.focus.name] || null;
@@ -1099,10 +1099,6 @@ function renderTrips() {
       const head = el('li', { class: 'group day-head' },
         el('span', { class: 'n' }, dayLabel(day)),
         el('span', { class: 'm' }, `${dayTrips.length} ${plural(dayTrips.length, 'trasa', 'trasy', 'tras')} · ${fmtKm(dayM)}`));
-      if (!tripSel.on) {
-        head.append(el('button', { class: 'share-btn', type: 'button', 'aria-label': `Udostępnij trasy z dnia ${dayLabel(day)}`, onclick: () => openShare(day) },
-          svgIcon('M12 3v12 M7 8l5-5 5 5 M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6'), 'Udostępnij'));
-      }
       ul.append(head);
     }
     const towns = tripTowns(t);
@@ -1418,6 +1414,32 @@ async function saveShared() {
   closeShared();
   setStatus('Zapisano udostępnioną trasę w Twoich trasach. Rozpoznaję ulice…');
   processPending();
+}
+
+/* ---------------- Zakładka „Udostępnij”: dni z trasami ---------------- */
+function renderShareTab() {
+  const days = [...new Set(state.trips.filter((t) => !t.recording).map((t) => dayKey(t.start)))].sort().reverse();
+  $('#st-empty').hidden = days.length > 0;
+  const ul = $('#share-days');
+  ul.replaceChildren();
+  for (const key of days) {
+    const trips = state.trips.filter((t) => !t.recording && dayKey(t.start) === key);
+    const m = trips.reduce((x, t) => x + (t.km || 0), 0);
+    const towns = [...new Set(trips.flatMap((t) => tripTowns(t)))];
+    // link liczony dopiero przy stuknięciu (kodowanie trasy jest kosztowne przy wielu dniach)
+    const sms = el('a', { class: 'a-sms', href: 'sms:', 'aria-label': `Wyślij SMS z trasami z dnia ${dayLabel(key)}` },
+      svgIcon('M4 5h16v11H8l-4 4z M8 9h8 M8 12h5'), 'SMS');
+    sms.addEventListener('click', () => { sms.href = 'sms:?&body=' + encodeURIComponent(smsText(daySummary(key))); });
+    const wa = el('a', { class: 'a-wa', href: 'https://wa.me/', target: '_blank', rel: 'noopener', 'aria-label': `Wyślij przez WhatsApp trasy z dnia ${dayLabel(key)}` },
+      svgIcon('M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4.1A8 8 0 1 1 20 11.5z'), 'WhatsApp');
+    wa.addEventListener('click', () => { wa.href = 'https://wa.me/?text=' + encodeURIComponent(smsText(daySummary(key))); });
+    const more = el('button', { class: 'a-more', type: 'button', 'aria-label': `Więcej opcji udostępniania dnia ${dayLabel(key)}`, onclick: () => openShare(key) }, 'Więcej…');
+    ul.append(el('li', { class: 'share-day' },
+      el('div', {},
+        el('b', {}, dayLabel(key)),
+        el('div', { class: 'm' }, `${trips.length} ${plural(trips.length, 'trasa', 'trasy', 'tras')} · ${fmtKm(m)}${towns.length ? ' · ' + towns.slice(0, 3).join(', ') + (towns.length > 3 ? '…' : '') : ''}`)),
+      el('div', { class: 'acts' }, sms, wa, more)));
+  }
 }
 
 let shareCur = null;

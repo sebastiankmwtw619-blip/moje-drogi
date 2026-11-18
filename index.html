@@ -180,6 +180,16 @@
     </div>
   </section>
 
+  <!-- UDOSTĘPNIJ: dni z trasami, przy każdym SMS / WhatsApp / więcej -->
+  <section id="view-sharetab" class="view" aria-label="Udostępnij trasy">
+    <div class="page">
+      <h1>Udostępnij trasy</h1>
+      <p class="fine">Wybierz dzień. SMS i WhatsApp wysyłają opis z linkiem: odbiorca zobaczy trasę na mapie, także bez tej aplikacji. „Więcej…” to obraz mapy, plik GPX i kopiowanie linku.</p>
+      <p id="st-empty" class="empty" hidden>Nie masz jeszcze nagranych tras do udostępnienia.</p>
+      <ul id="share-days" class="share-days"></ul>
+    </div>
+  </section>
+
   <!-- 4. STATYSTYKI: KILOMETRY TYGODNIOWO I MIESIĘCZNIE -->
   <section id="view-stats" class="view" aria-label="Statystyki">
     <div class="page">
@@ -303,6 +313,8 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>Miejscowości</button>
   <button type="button" data-view="view-streets">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/></svg>Ulice</button>
+  <button type="button" data-view="view-sharetab">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>Udostępnij</button>
   <button type="button" data-view="view-stats">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Statystyki</button>
 </nav>
