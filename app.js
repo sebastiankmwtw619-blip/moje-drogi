@@ -1404,6 +1404,11 @@ function showSharedFromHash() {
   $('#shared-title').textContent = dayLabel(d.key);
   $('#shared-info').textContent = `${fmtKm(d.m)}${d.ms ? ' · ' + fmtDur(d.ms) + ' jazdy' : ''}${d.newCount ? ` · ${d.newCount} ${plural(d.newCount, 'nowa ulica', 'nowe ulice', 'nowych ulic')}` : ''}`;
   $('#shared-save').hidden = !idb;
+  // na iPhonie: przenieś trasę do aplikacji iOS (otworzy ją na osobnym ekranie, nie na głównej mapie)
+  const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const raw = /^#s=(.+)$/.exec(location.hash)?.[1];
+  $('#shared-app').hidden = !(ios && raw);
+  if (raw) $('#shared-app').href = 'mojedrogi://shared?s=' + encodeURIComponent(decodeURIComponent(raw));
   $('#shared-note').textContent = idb
     ? 'Ta trasa nie trafia do Twoich tras ani statystyk, dopóki jej nie zapiszesz.'
     : 'Ta przeglądarka nie pozwala zapisywać tras (tryb prywatny?), ale trasę możesz obejrzeć.';
