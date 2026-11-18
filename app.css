@@ -363,22 +363,9 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 .sms-btn:hover { color: #fff; filter: brightness(.95); }
 .wa-btn { background: #0F766E; }
 .sms-btn svg { width: 22px; height: 22px; }
-/* osobny ekran udostępnionej trasy */
-body.shared-mode .tabbar { display: none; }
-.shared-top {
-  padding: calc(env(safe-area-inset-top, 0px) + 16px) max(18px, env(safe-area-inset-right, 0px)) 12px max(18px, env(safe-area-inset-left, 0px));
-  background: var(--surface); border-bottom: 1px solid var(--line);
-}
-.shared-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.shared-head h1 { font-size: 22px; margin: 2px 0 4px; }
-.shared-info { margin: 0; font-size: 14px; color: var(--fg); white-space: pre-line; font-variant-numeric: tabular-nums; }
-.shared-map-wrap { flex: 1; min-height: 0; position: relative; }
-#shared-map { position: absolute; inset: 0; background: #E9ECE6; }
-.shared-actions {
-  background: var(--surface); display: flex; flex-direction: column; gap: 8px;
-  padding: 12px max(18px, env(safe-area-inset-right, 0px)) calc(env(safe-area-inset-bottom, 0px) + 14px) max(18px, env(safe-area-inset-left, 0px));
-}
-.shared-actions .share-go, .shared-actions .ghost { flex: none; min-height: 48px; }
+.shared-card { border: 2px solid #7C3AED; }
+.shared-info { margin: 0; font-size: 14px; color: var(--fg); white-space: pre-line; }
+.shared-card .ghost { flex: none; }
 
 /* przełącznik powiadomień */
 .tool-switch { justify-content: space-between; gap: 12px; }

@@ -1382,38 +1382,27 @@ function parseSharedHash(hash) {
     return null;
   }
 }
-// Udostępniona trasa ma własny ekran i własną mapę — nigdy nie trafia na główną mapę z Twoimi trasami.
-let sharedMap = null, sharedLayer = null, sharedData = null;
+let sharedLayer = null, sharedData = null;
 function showSharedFromHash() {
   const d = parseSharedHash(location.hash);
   if (!d) return false;
   sharedData = d;
-  showView('view-shared');
-  if (!sharedMap) {
-    sharedMap = L.map('shared-map', { preferCanvas: true, zoomControl: true, attributionControl: true });
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(sharedMap);
-  }
   if (sharedLayer) sharedLayer.remove();
-  sharedLayer = L.polyline(d.segs, { color: '#7C3AED', weight: 6, opacity: 0.95 }).addTo(sharedMap);
-  setTimeout(() => {
-    sharedMap.invalidateSize();
-    sharedMap.fitBounds(sharedLayer.getBounds(), { padding: [30, 30], maxZoom: 16 });
-  }, 0);
-  $('#shared-title').textContent = dayLabel(d.key);
-  $('#shared-info').textContent = `${fmtKm(d.m)}${d.ms ? ' · ' + fmtDur(d.ms) + ' jazdy' : ''}${d.newCount ? ` · ${d.newCount} ${plural(d.newCount, 'nowa ulica', 'nowe ulice', 'nowych ulic')}` : ''}`;
-  $('#shared-save').hidden = !idb;
-  $('#shared-note').textContent = idb
-    ? 'Ta trasa nie trafia do Twoich tras ani statystyk, dopóki jej nie zapiszesz.'
-    : 'Ta przeglądarka nie pozwala zapisywać tras (tryb prywatny?), ale trasę możesz obejrzeć.';
+  sharedLayer = L.polyline(d.segs, { color: '#7C3AED', weight: 6, opacity: 0.95 }).addTo(map);
+  setFollow(false);
+  showView('view-map');
+  map.fitBounds(sharedLayer.getBounds(), { padding: [30, 30], maxZoom: 16 });
+  $('#shared-title').textContent = 'Udostępniona trasa';
+  $('#shared-info').textContent = `${dayLabel(d.key)}\n${fmtKm(d.m)}${d.ms ? ' · ' + fmtDur(d.ms) + ' jazdy' : ''}${d.newCount ? ` · ${d.newCount} ${plural(d.newCount, 'nowa ulica', 'nowe ulice', 'nowych ulic')}` : ''}\nFioletowa linia na mapie.`;
+  $('#shared-save').hidden = false;
+  $('#shared-card').hidden = false;
   return true;
 }
 function closeShared() {
   if (sharedLayer) { sharedLayer.remove(); sharedLayer = null; }
   sharedData = null;
+  $('#shared-card').hidden = true;
   try { history.replaceState(null, '', location.pathname); } catch { location.hash = ''; }
-  showView('view-map');
 }
 async function saveShared() {
   const d = sharedData;
@@ -1701,7 +1690,6 @@ function showView(id) {
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === id));
   // ekrany tras i szczegółów miejscowości należą do zakładki Miejscowości
   const tab = id === 'view-trips' || id === 'view-town' ? 'view-towns' : id;
-  document.body.classList.toggle('shared-mode', id === 'view-shared');
   if (id === 'view-stats') setTimeout(renderStats, 0);
   document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.view === tab));
   if (id === 'view-map') setTimeout(() => map.invalidateSize(), 0);
@@ -1765,7 +1753,7 @@ async function init() {
   try { idb = await openDb(); }
   catch {
     setStatus('Przeglądarka nie pozwala zapisywać danych (tryb prywatny?).');
-    showSharedFromHash(); // trasę z linku i tak pokaż (bez zapisu)
+    if (showSharedFromHash()) $('#shared-save').hidden = true; // trasę z linku i tak pokaż
     return;
   }
 
@@ -1964,12 +1952,8 @@ $('#share-copy').addEventListener('click', async () => {
   catch { $('#share-hint').textContent = link; }
 });
 $('#shared-close').addEventListener('click', closeShared);
-$('#shared-home').addEventListener('click', closeShared);
 $('#shared-save').addEventListener('click', saveShared);
-window.addEventListener('hashchange', () => {
-  // link otwarty w działającej aplikacji pokazuje ekran trasy; powrót (pusty adres) wraca do mapy
-  if (!showSharedFromHash() && $('#view-shared').classList.contains('active')) closeShared();
-});
+window.addEventListener('hashchange', showSharedFromHash);
 $('#share-go').addEventListener('click', doShare);
 $('#share-save').addEventListener('click', () => { if (shareCur?.blob) downloadBlob(shareCur.blob, `moje-drogi-${shareCur.S.key}.png`); });
 $('#share-modal').addEventListener('click', (e) => { if (e.target.id === 'share-modal') closeShare(); });
