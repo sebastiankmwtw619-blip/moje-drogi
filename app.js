@@ -146,8 +146,19 @@ function showPos(lat, lon, acc) {
 }
 function setFollow(on) {
   state.follow = on;
-  $('#btn-follow').classList.toggle('on', on);
-  $('#btn-follow').setAttribute('aria-pressed', String(on));
+  for (const b of [$('#btn-follow'), $('#btn-full-follow')]) {
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', String(on));
+  }
+}
+
+/* ---------------- Mapa na cały ekran ---------------- */
+function setFullMap(on) {
+  document.body.classList.toggle('map-full', on);
+  if (on) closeResults?.();
+  updateRecUi();
+  setTimeout(() => map.invalidateSize(), 0); // mapa zmienia rozmiar — Leaflet musi to wiedzieć
+  (on ? $('#btn-full-exit') : $('#btn-full')).focus();
 }
 function fitTown(name) {
   const T = state.agg[name];
@@ -293,7 +304,7 @@ function updateRecUi() {
   $('#rec-label').textContent = on ? 'Zakończ' : 'Rozpocznij nagrywanie trasy';
   $('#btn-pause').hidden = !on;
   $('#rec-info').hidden = !on;
-  if (!on) return;
+  if (!on) { updateFullRec(); return; }
   $('#btn-pause').classList.toggle('resume', !!tr.paused);
   $('#pause-label').textContent = tr.paused ? 'Wznów' : 'Wstrzymaj';
   $('#pause-icon').innerHTML = tr.paused ? '<path d="M7 5l12 7-12 7z"/>' : '<path d="M9 5v14M15 5v14"/>';
@@ -301,6 +312,20 @@ function updateRecUi() {
   $('#rec-state').textContent = tr.paused ? 'Wstrzymane' : 'Nagrywanie';
   $('#rec-time').textContent = fmtDur(activeMs(tr));
   $('#rec-km').textContent = fmtKm(trackLen(tr.points));
+  updateFullRec();
+}
+// mały pasek nagrywania w trybie pełnoekranowym
+function updateFullRec() {
+  const tr = state.rec;
+  const box = $('#full-rec');
+  box.hidden = !tr;
+  if (!tr) return;
+  const word = el('span', tr.paused ? { class: 'paused-word' } : {}, tr.paused ? 'Wstrzymane' : 'Nagrywanie');
+  $('#full-rec-info').replaceChildren(word, ` · ${fmtDur(activeMs(tr))} · ${fmtKm(trackLen(tr.points))}`);
+  const btn = $('#btn-full-pause');
+  btn.classList.toggle('resume', !!tr.paused);
+  btn.setAttribute('aria-label', tr.paused ? 'Wznów nagrywanie' : 'Wstrzymaj nagrywanie');
+  $('#full-pause-icon').innerHTML = tr.paused ? '<path d="M7 5l12 7-12 7z"/>' : '<path d="M9 5v14M15 5v14"/>';
 }
 
 /* ---------------- Rozpoznawanie ulic (Nominatim) ---------------- */
@@ -1712,6 +1737,7 @@ function showView(id) {
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.id === id));
   // ekrany tras i szczegółów miejscowości należą do zakładki Miejscowości
   const tab = id === 'view-trips' || id === 'view-town' ? 'view-towns' : id;
+  if (id !== 'view-map') document.body.classList.remove('map-full'); // inne ekrany zawsze z paskiem zakładek
   if (id === 'view-stats') setTimeout(renderStats, 0);
   document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.view === tab));
   if (id === 'view-map') setTimeout(() => map.invalidateSize(), 0);
@@ -1815,6 +1841,13 @@ async function init() {
 
 $('#btn-rec').addEventListener('click', () => (state.rec ? stopRec() : startRec()));
 $('#btn-pause').addEventListener('click', () => (state.rec?.paused ? resumeRec() : pauseRec()));
+$('#btn-full').addEventListener('click', () => setFullMap(true));
+$('#btn-full-exit').addEventListener('click', () => setFullMap(false));
+$('#btn-full-follow').addEventListener('click', () => $('#btn-follow').click());
+$('#btn-full-pause').addEventListener('click', () => (state.rec?.paused ? resumeRec() : pauseRec()));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.body.classList.contains('map-full') && $('#share-modal').hidden) setFullMap(false);
+});
 $('#btn-layer').addEventListener('click', () => {
   state.showVisited = !state.showVisited;
   $('#btn-layer').classList.toggle('on', state.showVisited);

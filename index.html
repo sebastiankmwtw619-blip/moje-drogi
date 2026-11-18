@@ -20,6 +20,23 @@
   <section id="view-map" class="view active" aria-label="Mapa">
     <div class="map-wrap">
       <div id="map"></div>
+      <!-- tryb pełnoekranowy: tylko wyjście, śledzenie pozycji i (podczas nagrywania) mały pasek -->
+      <div class="full-ui" id="full-ui">
+        <div class="full-btns">
+          <button id="btn-full-exit" class="fab" type="button" aria-label="Zamknij pełny ekran mapy">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+          </button>
+          <button id="btn-full-follow" class="fab on" type="button" aria-pressed="true" aria-label="Śledź moją pozycję">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/></svg>
+          </button>
+        </div>
+        <div class="full-rec" id="full-rec" hidden>
+          <span class="rec-info" id="full-rec-info" aria-live="polite"></span>
+          <button id="btn-full-pause" class="fab" type="button" aria-label="Wstrzymaj nagrywanie">
+            <svg viewBox="0 0 24 24" aria-hidden="true" id="full-pause-icon"><path d="M9 5v14M15 5v14"/></svg>
+          </button>
+        </div>
+      </div>
       <div class="map-top">
         <div class="search-wrap">
           <form id="search-form" class="search" role="search">
@@ -46,6 +63,9 @@
           <button id="btn-theme" class="fab theme" type="button" aria-label="Tryb mapy: automatyczny. Stuknij, żeby zmienić.">
             <svg viewBox="0 0 24 24" aria-hidden="true" id="theme-icon"></svg>
             <span id="theme-tag" class="fab-tag">Auto</span>
+          </button>
+          <button id="btn-full" class="fab" type="button" aria-label="Mapa na cały ekran">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
           </button>
         </div>
       </div>
