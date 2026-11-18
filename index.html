@@ -83,16 +83,6 @@
         <div><b id="st-towns">0</b><span>miejscowości</span></div>
         <div><b id="st-total">0 km</b><span>wszystkie trasy</span></div>
       </div>
-      <section id="shared-card" class="ns-card shared-card" hidden aria-labelledby="shared-title">
-        <div class="ns-head">
-          <h2 id="shared-title">Udostępniona trasa</h2>
-          <button id="shared-close" class="q-clear" type="button" aria-label="Zamknij udostępnioną trasę">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-          </button>
-        </div>
-        <p id="shared-info" class="shared-info"></p>
-        <button id="shared-save" class="ghost" type="button">Zapisz w moich trasach</button>
-      </section>
       <section id="ns-card" class="ns-card" hidden aria-labelledby="ns-title">
         <div class="ns-head">
           <h2 id="ns-title">Nowe ulice z tej trasy</h2>
@@ -204,6 +194,18 @@
   <section id="view-sharetab" class="view" aria-label="Udostępnij trasy">
     <div class="page">
       <h1>Udostępnij trasy</h1>
+      <!-- trasa otwarta z linku SMS/WhatsApp: tylko tutaj, nigdy na głównej mapie -->
+      <section id="recv-card" class="card recv-card" hidden aria-labelledby="recv-title">
+        <h2 id="recv-title">Otrzymana trasa</h2>
+        <p id="shared-info" class="shared-info"></p>
+        <div id="recv-map" class="recv-map" role="img" aria-label="Mapa z otrzymaną trasą"></div>
+        <div class="row-btns">
+          <button id="shared-save" class="del-btn share-go" type="button">Zapisz w moich trasach</button>
+          <button id="shared-close" class="ghost" type="button">Usuń</button>
+        </div>
+        <p class="fine">Otrzymana trasa nie trafia na Twoją mapę ani do statystyk, dopóki jej nie zapiszesz.</p>
+      </section>
+      <p id="st-msg" class="fine" role="status"></p>
       <p class="fine">Wybierz dzień. SMS i WhatsApp wysyłają opis z linkiem: odbiorca zobaczy trasę na mapie, także bez tej aplikacji. „Więcej…” to obraz mapy, plik GPX i kopiowanie linku.</p>
       <p id="st-empty" class="empty" hidden>Nie masz jeszcze nagranych tras do udostępnienia.</p>
       <ul id="share-days" class="share-days"></ul>

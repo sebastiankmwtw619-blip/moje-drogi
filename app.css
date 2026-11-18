@@ -363,9 +363,12 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 .sms-btn:hover { color: #fff; filter: brightness(.95); }
 .wa-btn { background: #0F766E; }
 .sms-btn svg { width: 22px; height: 22px; }
-.shared-card { border: 2px solid #7C3AED; }
 .shared-info { margin: 0; font-size: 14px; color: var(--fg); white-space: pre-line; }
-.shared-card .ghost { flex: none; }
+
+/* otrzymana trasa (z linku) w zakładce Udostępnij */
+.recv-card { padding: 14px; display: flex; flex-direction: column; gap: 10px; border: 2px solid #7C3AED; }
+.recv-card h2 { margin: 0; font-size: 18px; }
+.recv-map { height: 240px; border-radius: 12px; overflow: hidden; background: #E9ECE6; }
 
 /* zakładka Udostępnij */
 .share-days { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }

@@ -1404,25 +1404,32 @@ function parseSharedHash(hash) {
   }
 }
 let sharedLayer = null, sharedData = null;
+// Trasa z linku pokazuje się wyłącznie w zakładce „Udostępnij” (własna mała mapa), nigdy na głównej mapie.
+let recvMap = null;
 function showSharedFromHash() {
   const d = parseSharedHash(location.hash);
   if (!d) return false;
   sharedData = d;
+  showView('view-sharetab');
+  $('#recv-card').hidden = false;
+  $('#st-msg').textContent = '';
+  $('#shared-info').textContent = `${dayLabel(d.key)}\n${fmtKm(d.m)}${d.ms ? ' · ' + fmtDur(d.ms) + ' jazdy' : ''}${d.newCount ? ` · ${d.newCount} ${plural(d.newCount, 'nowa ulica', 'nowe ulice', 'nowych ulic')}` : ''}`;
+  $('#shared-save').hidden = !idb;
+  if (!recvMap) {
+    recvMap = L.map('recv-map', { preferCanvas: true, zoomControl: true, attributionControl: true });
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(recvMap);
+  }
   if (sharedLayer) sharedLayer.remove();
-  sharedLayer = L.polyline(d.segs, { color: '#7C3AED', weight: 6, opacity: 0.95 }).addTo(map);
-  setFollow(false);
-  showView('view-map');
-  map.fitBounds(sharedLayer.getBounds(), { padding: [30, 30], maxZoom: 16 });
-  $('#shared-title').textContent = 'Udostępniona trasa';
-  $('#shared-info').textContent = `${dayLabel(d.key)}\n${fmtKm(d.m)}${d.ms ? ' · ' + fmtDur(d.ms) + ' jazdy' : ''}${d.newCount ? ` · ${d.newCount} ${plural(d.newCount, 'nowa ulica', 'nowe ulice', 'nowych ulic')}` : ''}\nFioletowa linia na mapie.`;
-  $('#shared-save').hidden = false;
-  $('#shared-card').hidden = false;
+  sharedLayer = L.polyline(d.segs, { color: '#7C3AED', weight: 6, opacity: 0.95 }).addTo(recvMap);
+  setTimeout(() => { recvMap.invalidateSize(); recvMap.fitBounds(sharedLayer.getBounds(), { padding: [20, 20], maxZoom: 16 }); }, 0);
   return true;
 }
 function closeShared() {
   if (sharedLayer) { sharedLayer.remove(); sharedLayer = null; }
   sharedData = null;
-  $('#shared-card').hidden = true;
+  $('#recv-card').hidden = true;
   try { history.replaceState(null, '', location.pathname); } catch { location.hash = ''; }
 }
 async function saveShared() {
@@ -1437,7 +1444,7 @@ async function saveShared() {
   state.trips.push(t);
   rebuild();
   closeShared();
-  setStatus('Zapisano udostępnioną trasę w Twoich trasach. Rozpoznaję ulice…');
+  $('#st-msg').textContent = 'Zapisano otrzymaną trasę w Twoich trasach. Ulice rozpoznają się w tle.';
   processPending();
 }
 
@@ -1801,7 +1808,7 @@ async function init() {
   try { idb = await openDb(); }
   catch {
     setStatus('Przeglądarka nie pozwala zapisywać danych (tryb prywatny?).');
-    if (showSharedFromHash()) $('#shared-save').hidden = true; // trasę z linku i tak pokaż
+    showSharedFromHash(); // trasę z linku i tak pokaż (bez zapisu)
     return;
   }
 
@@ -1830,7 +1837,8 @@ async function init() {
   const all = state.trips.flatMap((t) => t.points.map((p) => [p[0], p[1]]));
   setFollow(false);
   // otwarte z linku SMS: pokaż udostępnioną trasę zamiast własnych
-  if (!showSharedFromHash() && all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 15 });
+  if (all.length) map.fitBounds(L.latLngBounds(all), { padding: [30, 30], maxZoom: 15 });
+  showSharedFromHash(); // otwarte z linku: trasa w zakładce „Udostępnij”
   processPending();
 
   // pokaż pozycję bez nagrywania (jednorazowo)
