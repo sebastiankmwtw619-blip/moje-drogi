@@ -16,6 +16,28 @@
 <body>
 <main>
 
+  <!-- UDOSTĘPNIONA TRASA (otwarta z linku SMS / WhatsApp) — osobny ekran, główna mapa zostaje nietknięta -->
+  <section id="view-shared" class="view" aria-labelledby="shared-title">
+    <div class="shared-top">
+      <div class="shared-head">
+        <div>
+          <span class="label">Udostępniona trasa</span>
+          <h1 id="shared-title">—</h1>
+          <p id="shared-info" class="shared-info"></p>
+        </div>
+        <button id="shared-close" class="icon-btn" type="button" aria-label="Zamknij udostępnioną trasę">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="shared-map-wrap"><div id="shared-map" role="img" aria-label="Mapa z udostępnioną trasą"></div></div>
+    <div class="shared-actions">
+      <button id="shared-save" class="del-btn share-go" type="button">Zapisz w moich trasach</button>
+      <button id="shared-home" class="ghost" type="button">Przejdź do Moich Dróg</button>
+      <p id="shared-note" class="fine">Ta trasa nie trafia do Twoich tras ani statystyk, dopóki jej nie zapiszesz.</p>
+    </div>
+  </section>
+
   <!-- 1. MAPA -->
   <section id="view-map" class="view active" aria-label="Mapa">
     <div class="map-wrap">
@@ -63,16 +85,6 @@
         <div><b id="st-towns">0</b><span>miejscowości</span></div>
         <div><b id="st-total">0 km</b><span>wszystkie trasy</span></div>
       </div>
-      <section id="shared-card" class="ns-card shared-card" hidden aria-labelledby="shared-title">
-        <div class="ns-head">
-          <h2 id="shared-title">Udostępniona trasa</h2>
-          <button id="shared-close" class="q-clear" type="button" aria-label="Zamknij udostępnioną trasę">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-          </button>
-        </div>
-        <p id="shared-info" class="shared-info"></p>
-        <button id="shared-save" class="ghost" type="button">Zapisz w moich trasach</button>
-      </section>
       <section id="ns-card" class="ns-card" hidden aria-labelledby="ns-title">
         <div class="ns-head">
           <h2 id="ns-title">Nowe ulice z tej trasy</h2>
