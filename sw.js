@@ -1,7 +1,8 @@
 // Prosty service worker: aplikacja otwiera się bez internetu (mapa i nazwy ulic wymagają sieci).
-const CACHE = 'moje-drogi-v21';
+const CACHE = 'moje-drogi-v22';
 const SHELL = [
   './', './index.html', './app.css', './app.js', './manifest.webmanifest', './icon.svg',
+  './icon-180.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './favicon-32.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
 ];

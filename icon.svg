@@ -1,9 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#1D4ED8"/>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M96 190 L416 200 M96 330 L416 320 M200 96 L210 416 M320 96 L314 416" stroke="#93B4FF" stroke-width="22" opacity=".55"/>
-    <path d="M96 190 L416 200 M200 96 L210 416" stroke="#FFFFFF" stroke-width="30"/>
-    <path d="M210 416 L208 330 L314 322 L318 200" stroke="#FB923C" stroke-width="30"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2453D9"/><stop offset="1" stop-color="#16349E"/>
+    </linearGradient>
+    <clipPath id="tile"><rect x="8" y="8" width="240" height="240" rx="56"/></clipPath>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#bg)"/>
+  <g clip-path="url(#tile)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M30 86L226 98M30 170L226 160M92 30L100 226M176 30L168 226" stroke="#FFFFFF" stroke-opacity=".18" stroke-width="10"/>
+    <path d="M54 206L96 200L100 132L172 126L176 92" stroke="#FFFFFF" stroke-width="30"/>
+    <path d="M54 206L96 200L100 132L172 126L176 92" stroke="#22C55E" stroke-width="18"/>
   </g>
-  <circle cx="318" cy="200" r="30" fill="#FB923C" stroke="#FFFFFF" stroke-width="14"/>
+  <path d="M176 109.5L153.2 77.3A30 30 0 1 1 198.8 77.3Z" fill="#FFFFFF"/>
+  <path d="M176 100.4L158.2 76.1A23.4 23.4 0 1 1 193.8 76.1Z" fill="#F97316"/>
+  <circle cx="176" cy="65" r="9.6" fill="#FFFFFF"/>
 </svg>
