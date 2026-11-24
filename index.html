@@ -81,16 +81,6 @@
         </div>
         <button class="link" id="sheet-details" type="button">Szczegóły →</button>
       </div>
-      <div id="nav-row" class="nav-row" hidden>
-        <span class="label">Nawiguj do: <b id="nav-dest"></b></span>
-        <div class="nav-apps">
-          <a id="nav-google" class="nav-btn primary" target="_blank" rel="noopener">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>Google Maps
-          </a>
-          <a id="nav-waze" class="nav-btn" target="_blank" rel="noopener">Waze</a>
-          <a id="nav-apple" class="nav-btn" target="_blank" rel="noopener" hidden>Mapy Apple</a>
-        </div>
-      </div>
       <div class="stats3">
         <div><b id="st-km">0 km</b><span>w tej miejscowości</span></div>
         <div><b id="st-towns">0</b><span>miejscowości</span></div>
@@ -112,6 +102,19 @@
           <span id="pause-label">Wstrzymaj</span>
         </button>
         <button id="btn-rec" class="rec" type="button"><span class="dot"></span><span id="rec-label">Rozpocznij nagrywanie trasy</span></button>
+      </div>
+      <button id="nav-start" class="nav-btn nav-start" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>Nawiguj do adresu
+      </button>
+      <div id="nav-row" class="nav-row" hidden>
+        <span class="label">Nawiguj do: <b id="nav-dest"></b></span>
+        <div class="nav-apps">
+          <a id="nav-google" class="nav-btn primary" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8-8-2z"/></svg>Google Maps
+          </a>
+          <a id="nav-waze" class="nav-btn" target="_blank" rel="noopener">Waze</a>
+          <a id="nav-apple" class="nav-btn" target="_blank" rel="noopener" hidden>Mapy Apple</a>
+        </div>
       </div>
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </div>

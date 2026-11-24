@@ -1,5 +1,5 @@
 // Prosty service worker: aplikacja otwiera się bez internetu (mapa i nazwy ulic wymagają sieci).
-const CACHE = 'moje-drogi-v24';
+const CACHE = 'moje-drogi-v25';
 const SHELL = [
   './', './index.html', './app.css', './app.js', './manifest.webmanifest', './icon.svg',
   './icon-180.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './favicon-32.png',

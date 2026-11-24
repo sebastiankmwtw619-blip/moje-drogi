@@ -716,6 +716,7 @@ const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'onto
 function renderNav() {
   const f = state.focus;
   $('#nav-row').hidden = !f;
+  $('#nav-start').hidden = !!f;
   if (!f) return;
   const ll = `${f.lat.toFixed(6)},${f.lon.toFixed(6)}`;
   $('#nav-dest').textContent = f.label || f.name;
@@ -2053,6 +2054,14 @@ $('#search-form').addEventListener('submit', (e) => {
   if (q.length >= 2) searchRemote(q);
 });
 $('#q-clear').addEventListener('click', () => { clearSearch(); qInput.focus(); });
+// „Nawiguj do adresu”: najpierw trzeba wybrać cel w wyszukiwarce
+$('#nav-start').addEventListener('click', () => {
+  showView('view-map');
+  qInput.placeholder = 'Dokąd jedziesz? Wpisz adres';
+  qInput.focus();
+  setStatus('Wpisz adres i wybierz go z listy, potem stuknij aplikację do nawigacji.');
+});
+qInput.addEventListener('blur', () => { qInput.placeholder = 'Szukaj adresu lub miejscowości'; });
 qInput.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeResults(); });
 document.addEventListener('pointerdown', (e) => { if (!e.target.closest('.search-wrap')) closeResults(); });
 $('#town-filter').addEventListener('input', (e) => { state.filter = e.target.value; renderTowns(); });

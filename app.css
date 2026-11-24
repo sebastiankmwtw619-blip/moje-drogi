@@ -149,6 +149,8 @@ body.map-dark .leaflet-bar a { background: #1A1D24; color: #F3F4F6; border-color
 .nav-btn[hidden] { display: none; }
 .nav-btn.primary { flex: 1.4; background: var(--accent); border-color: var(--accent); color: #fff; }
 .nav-btn svg { width: 16px; height: 16px; fill: currentColor; }
+.nav-start { width: 100%; flex: none; cursor: pointer; font-size: 15px; }
+.nav-start svg { fill: var(--accent); }
 .rec-row .rec { flex: 1; min-width: 0; }
 .rec.pause { background: var(--surface); color: var(--fg); border: 2px solid var(--line); }
 .rec.pause svg { width: 20px; height: 20px; stroke-width: 2.5; }
