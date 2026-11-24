@@ -137,6 +137,18 @@ body.map-dark .leaflet-bar a { background: #1A1D24; color: #F3F4F6; border-color
 .rec.on { background: var(--danger); color: #fff; }
 .rec.on .dot { border-radius: 2px; }
 .rec-row { display: flex; gap: 8px; }
+.nav-row { display: flex; flex-direction: column; gap: 6px; }
+.nav-row[hidden] { display: none; }
+.nav-row b { color: var(--fg); font-weight: 600; }
+.nav-apps { display: flex; gap: 8px; }
+.nav-btn {
+  flex: 1; min-width: 0; height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface);
+  color: var(--fg); font-weight: 600; font-size: 14px; text-decoration: none;
+  display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+}
+.nav-btn[hidden] { display: none; }
+.nav-btn.primary { flex: 1.4; background: var(--accent); border-color: var(--accent); color: #fff; }
+.nav-btn svg { width: 16px; height: 16px; fill: currentColor; }
 .rec-row .rec { flex: 1; min-width: 0; }
 .rec.pause { background: var(--surface); color: var(--fg); border: 2px solid var(--line); }
 .rec.pause svg { width: 20px; height: 20px; stroke-width: 2.5; }

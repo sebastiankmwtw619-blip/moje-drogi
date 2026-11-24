@@ -711,7 +711,22 @@ function sheetTown() {
   return [...townsSorted()].sort((a, b) => b.last - a.last)[0] || null;
 }
 
+// Nawigacja do wyszukanego miejsca w zewnętrznej aplikacji (Google Maps, Waze, Mapy Apple)
+const IS_APPLE = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent) && 'ontouchend' in document;
+function renderNav() {
+  const f = state.focus;
+  $('#nav-row').hidden = !f;
+  if (!f) return;
+  const ll = `${f.lat.toFixed(6)},${f.lon.toFixed(6)}`;
+  $('#nav-dest').textContent = f.label || f.name;
+  $('#nav-google').href = `https://www.google.com/maps/dir/?api=1&destination=${ll}&travelmode=driving`;
+  $('#nav-waze').href = `https://waze.com/ul?ll=${ll}&navigate=yes`;
+  $('#nav-apple').href = `https://maps.apple.com/?daddr=${ll}&dirflg=d`;
+  $('#nav-apple').hidden = !IS_APPLE;
+}
+
 function renderSheet() {
+  renderNav();
   const towns = townsSorted();
   const recent = sheetTown();
   const total = state.trips.reduce((s, t) => s + (t.km || 0), 0);
@@ -1980,7 +1995,7 @@ async function searchRemote(q) {
 
 // town: miejscowość, do której należy punkt (statystyki); label: co pokazać w polu i na mapie
 function focusOn(town, lat, lon, bbox, label = town) {
-  state.focus = { name: town, lat, lon };
+  state.focus = { name: town, label, lat, lon };
   qInput.value = label;
   $('#q-clear').hidden = false;
   closeResults();
