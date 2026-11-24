@@ -245,7 +245,13 @@ h2 { margin: 12px 0 0; font: 700 18px var(--font-num); }
 .tabbar svg { width: 22px; height: 22px; }
 .tabbar button.on { color: var(--accent); font-weight: 600; }
 
+.pos-me { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; transition: transform .4s ease-out; }
 .pos-dot { width: 18px; height: 18px; border-radius: 50%; background: var(--now); border: 3px solid #fff; box-shadow: 0 0 0 8px rgba(234,88,12,.2); }
+.pos-arrow { display: none; width: 30px; height: 30px; fill: var(--now); stroke: #fff; stroke-width: 2; stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(234,88,12,.45)); }
+.pos-me.has-course .pos-arrow { display: block; }
+.pos-me.has-course .pos-dot { display: none; }
+@media (prefers-reduced-motion: reduce) { .pos-me { transition: none; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
 
 /* ---------- Osiedla i zbiorcza lista ulic ---------- */

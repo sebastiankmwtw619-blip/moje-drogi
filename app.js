@@ -135,13 +135,40 @@ function drawTrips() {
     L.polyline(segmentsOf(t.points), { color: GREEN, weight: 5, opacity: 0.85, interactive: false }).addTo(visitedLayer);
   }
 }
-function showPos(lat, lon, acc) {
+// Twoja pozycja: strzałka w kierunku jazdy. Kierunek bierzemy z GPS (heading, gdy jedziesz),
+// a gdy przeglądarka go nie podaje, liczymy go z przesunięcia od poprzedniego punktu.
+let courseAnchor = null, lastCourse = null, shownCourse = null;
+const POS_HTML = '<div class="pos-me"><svg class="pos-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 L20 21 L12 16.5 L4 21 Z"/></svg><div class="pos-dot"></div></div>';
+function bearing(a, b) {
+  const r = Math.PI / 180;
+  const y = Math.sin((b[1] - a[1]) * r) * Math.cos(b[0] * r);
+  const x = Math.cos(a[0] * r) * Math.sin(b[0] * r) - Math.sin(a[0] * r) * Math.cos(b[0] * r) * Math.cos((b[1] - a[1]) * r);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+function updateCourse(c) {
+  const p = [c.latitude, c.longitude];
+  if (Number.isFinite(c.heading) && (c.speed ?? 0) > 0.7) { lastCourse = c.heading; courseAnchor = p; return; }
+  if (!courseAnchor) { courseAnchor = p; return; }
+  if (dist(courseAnchor, p) >= Math.max(10, (c.accuracy || 10) * 0.8)) { lastCourse = bearing(courseAnchor, p); courseAnchor = p; }
+}
+function showPos(c) {
+  const lat = c.latitude, lon = c.longitude, acc = c.accuracy;
+  updateCourse(c);
   if (!posMarker) {
-    posMarker = L.marker([lat, lon], { icon: L.divIcon({ className: '', html: '<div class="pos-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] }), interactive: false, keyboard: false }).addTo(map);
+    posMarker = L.marker([lat, lon], { icon: L.divIcon({ className: '', html: POS_HTML, iconSize: [40, 40], iconAnchor: [20, 20] }), interactive: false, keyboard: false, zIndexOffset: 1000 }).addTo(map);
     accCircle = L.circle([lat, lon], { radius: acc, color: '#EA580C', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
   } else {
     posMarker.setLatLng([lat, lon]);
     accCircle.setLatLng([lat, lon]).setRadius(acc);
+  }
+  const me = posMarker.getElement()?.querySelector('.pos-me');
+  if (me) {
+    me.classList.toggle('has-course', lastCourse != null);
+    if (lastCourse != null) {
+      // obrót najkrótszą drogą (np. 350° → 10° to +20°, nie −340°)
+      shownCourse = shownCourse == null ? lastCourse : shownCourse + ((lastCourse - shownCourse + 540) % 360) - 180;
+      me.style.transform = `rotate(${shownCourse}deg)`;
+    }
   }
   if (state.follow) map.setView([lat, lon], FOLLOW_ZOOM, { animate: true });
 }
@@ -240,7 +267,7 @@ async function startRec() {
 
 function onPos(pos) {
   const { latitude: lat, longitude: lon, accuracy } = pos.coords;
-  showPos(lat, lon, accuracy);
+  showPos(pos.coords);
   const tr = state.rec;
   if (!tr || tr.paused) return;
   if (accuracy > MAX_ACCURACY_M) { setStatus(`Słaby sygnał GPS (±${Math.round(accuracy)} m), czekam…`); return; }
@@ -1860,9 +1887,9 @@ async function init() {
   showSharedFromHash(); // otwarte z linku: trasa w zakładce „Udostępnij”
   processPending();
 
-  // pokaż pozycję bez nagrywania (jednorazowo)
+  // pokazuj pozycję i kierunek także bez nagrywania (podczas nagrywania robi to onPos)
   if (navigator.geolocation && window.isSecureContext) {
-    navigator.geolocation.getCurrentPosition((p) => showPos(p.coords.latitude, p.coords.longitude, p.coords.accuracy), () => {}, { enableHighAccuracy: true, timeout: 15000 });
+    navigator.geolocation.watchPosition((p) => { if (!state.rec || state.rec.paused) showPos(p.coords); }, () => {}, { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 });
   }
 }
 
